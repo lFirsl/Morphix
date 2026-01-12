@@ -1,5 +1,7 @@
 import argparse
 
+# This is using argparse - which is a built-in python CLI interface library
+# Details here: https://docs.python.org/3/library/argparse.html
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compress a video to a target size.")

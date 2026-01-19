@@ -33,4 +33,4 @@ conda remove --name env --all
 
 # Example instruction
 
-Python Morphix.py vid1.mp4 --max-mb 1 --output vid1_new.mp4       
+Python Morphix.py examples/vid1.mp4 --max-mb 0.5 --output examples/outputs/vid1_new.mp4       

@@ -1,6 +1,4 @@
-.vscode
-.example_videos
-.output
+examples/outputs/*
 __pycache__
 *.log
 *.log.*

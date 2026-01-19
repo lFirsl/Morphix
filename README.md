@@ -6,11 +6,11 @@ A prototype for Morphix, a universal file conversion and compression desktop app
 # Setup
 First, make sure you have your virtual environment setup.
 
-Create the virtual environment locally, note this will take a little while to run.
+Create the virtual environment locally, selecting `[y]` for every option, then verify it exists.
+This step installs a bunch of dependencies by default, which cover what need to be installed to run morphix as it is currently.
 
 ```py
 conda create --name env python=3.13.9
-# See what envs you have
 conda info --envs
 ```
 
@@ -23,11 +23,6 @@ Change python version, if you wish:
 ```py
 conda uninstall python
 conda install python=3.13.9
-```
-
-Install all of the dependencies (this assumes you have pip installed)
-```
-conda install --file requirements.txt
 ```
 
 Deactivate then delete the venv

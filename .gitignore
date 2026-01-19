@@ -1,3 +1,6 @@
 .vscode
 .example_videos
 .output
+__pycache__
+*.log
+*.log.*

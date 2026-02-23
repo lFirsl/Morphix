@@ -22,8 +22,8 @@ def parse_args():
     )
     parser.add_argument(
         "--output",
-        default=".output/output.mp4",
-        help="Path to the output file.",
+        default=None,
+        help="Path to the output file. Defaults to input name with _{max_mb}mb suffix.",
     )
     parser.add_argument(
         "--disable-logs",

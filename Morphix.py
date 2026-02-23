@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import ffmpeg
@@ -30,7 +31,16 @@ def detect_cuda():
 
 def main():
     args = parse_args()
-    output_path = args.output
+    input_path = os.path.abspath(args.input)
+    input_dir = os.path.dirname(input_path)
+    base_name, ext = os.path.splitext(os.path.basename(input_path))
+    if not ext:
+        ext = ".mp4"
+    if args.output:
+        output_path = args.output
+    else:
+        size_label = str(args.max_mb).rstrip("0").rstrip(".")
+        output_path = os.path.join(input_dir, f"{base_name}_{size_label}mb{ext}")
 
     print(f"Proceeding with a compression down to a size of {args.max_mb}mb")
 
@@ -40,23 +50,40 @@ def main():
     print(f"Hardware acceleration present? - {hwaccel}")
     input_kwargs = {"hwaccel": hwaccel} if hwaccel else {}
 
+    log_dir = os.path.join(input_dir, ".output")
+    os.makedirs(log_dir, exist_ok=True)
+    passlog_path = os.path.join(log_dir, "ffmpeg2pass")
+
+    def run_ffmpeg(stream):
+        try:
+            stream.run(quiet=args.disable_logs, overwrite_output=args.overwrite)
+        except ffmpeg.Error as exc:
+            err_path = os.path.join(log_dir, "ffmpeg-error.log")
+            with open(err_path, "wb") as f:
+                if exc.stderr:
+                    f.write(exc.stderr)
+                else:
+                    f.write(b"No stderr captured from ffmpeg.\n")
+            print(f"FFmpeg failed. See: {err_path}")
+            raise
+
     # pass 1
-    (
+    run_ffmpeg(
         ffmpeg
         .input(args.input, **input_kwargs)
         .output(
-            "NUL", 
-            vcodec="libx264", 
-            preset="medium", 
-            **{"b:v": f"{video_kbps}k"}, 
-            **{"pass": 1}, 
-            an=None, 
+            "NUL",
+            vcodec="libx264",
+            preset="medium",
+            **{"b:v": f"{video_kbps}k"},
+            **{"pass": 1},
+            **{"passlogfile": passlog_path},
+            an=None,
             f="mp4")
-        .run(quiet=args.disable_logs, overwrite_output=args.overwrite)
     )
 
     # pass 2
-    (
+    run_ffmpeg(
         ffmpeg
         .input(args.input, **input_kwargs)
         .output(
@@ -65,12 +92,31 @@ def main():
             preset="medium",
             **{"b:v": f"{video_kbps}k"},
             **{"pass": 2},
+            **{"passlogfile": passlog_path},
             acodec="aac",
             audio_bitrate="128k",
         )
-        .run(quiet=args.disable_logs, overwrite_output=args.overwrite)
     )
+
+    for suffix in (".log", ".log.mbtree"):
+        try:
+            os.remove(passlog_path + suffix)
+        except FileNotFoundError:
+            pass
+
+    try:
+        if not os.listdir(log_dir):
+            os.rmdir(log_dir)
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        print(f"Error: {exc}")
+        try:
+            input("Press Enter to exit...")
+        except EOFError:
+            pass

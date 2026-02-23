@@ -9,6 +9,7 @@ print("Morphix Prototype")
 
 def target_kbps_for_size_mb(size_mb, duration_s, audio_kbps=128):
     target_bytes = size_mb * 1_000_000  # MB
+    # Convert target size to kbps: bytes -> bits -> bps -> kbps.
     total_kbps = (target_bytes * 8) / duration_s / 1000
     video_kbps = max(total_kbps - audio_kbps, 1)
     return int(video_kbps)

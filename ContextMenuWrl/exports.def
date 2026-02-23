@@ -1,0 +1,4 @@
+LIBRARY MorphixContextMenu
+EXPORTS
+    DllCanUnloadNow PRIVATE
+    DllGetClassObject PRIVATE

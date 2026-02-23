@@ -2,3 +2,8 @@ examples/outputs/*
 __pycache__
 *.log
 *.log.*
+*example_videos
+*output
+*dist
+*build
+*vscode

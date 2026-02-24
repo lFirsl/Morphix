@@ -61,3 +61,24 @@ Remove old package + install new:
 Get-AppxPackage -Name Morphix.Package | Remove-AppxPackage
 Add-AppxPackage "C:\Users\flori\source\repos\morphix-prototype\Morphix.msix"
 ```
+
+# Self-Signed Certificate (MSIX Signing)
+
+Create a self-signed cert in your user store:
+```powershell
+New-SelfSignedCertificate -Type Custom -Subject "CN=Morphix" -KeyUsage DigitalSignature -FriendlyName "MorphixSignCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+```
+
+Export it to a PFX:
+```powershell
+$password = ConvertTo-SecureString -String <YOUR_PASSWORD> -Force -AsPlainText
+Export-PfxCertificate -cert "Cert:\CurrentUser\My\<CERT_THUMBPRINT>" -FilePath "C:\Users\flori\source\repos\morphix-prototype\Morphix.pfx" -Password $password
+```
+
+Trust the cert (required for Add-AppxPackage on this machine):
+```powershell
+Export-Certificate -Cert "Cert:\CurrentUser\My\<CERT_THUMBPRINT>" -FilePath "C:\Users\flori\source\repos\morphix-prototype\Morphix.cer"
+Import-Certificate -FilePath "C:\Users\flori\source\repos\morphix-prototype\Morphix.cer" -CertStoreLocation "Cert:\LocalMachine\Root"
+```
+
+Note: `Publisher="CN=Morphix"` in `msix/AppxManifest.xml` must match the cert subject.

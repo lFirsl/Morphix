@@ -41,6 +41,11 @@ Build the EXE:
 py -3 -m PyInstaller --onefile --hidden-import=ffmpeg Morphix.py
 ```
 
+Dependencies:
+```bash
+py -3 -m pip install -r requirements.txt
+```
+
 Build the COM DLL (outputs to `msix\ContextMenu\`):
 ```powershell
 msbuild .\ContextMenuWrl\MorphixContextMenu.vcxproj /p:Configuration=Release /p:Platform=x64

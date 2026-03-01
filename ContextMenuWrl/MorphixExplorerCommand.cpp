@@ -18,6 +18,7 @@ STDMETHODIMP MorphixExplorerCommand::GetTitle(IShellItemArray*, LPWSTR* ppszName
 
 STDMETHODIMP MorphixExplorerCommand::GetIcon(IShellItemArray*, LPWSTR* ppszIcon)
 {
+    // No icon for now. Returning E_NOTIMPL tells Explorer to skip it.
     if (ppszIcon)
     {
         *ppszIcon = nullptr;
@@ -27,6 +28,7 @@ STDMETHODIMP MorphixExplorerCommand::GetIcon(IShellItemArray*, LPWSTR* ppszIcon)
 
 STDMETHODIMP MorphixExplorerCommand::GetToolTip(IShellItemArray*, LPWSTR* ppszInfotip)
 {
+    // No tooltip for now.
     if (ppszInfotip)
     {
         *ppszInfotip = nullptr;
@@ -36,6 +38,7 @@ STDMETHODIMP MorphixExplorerCommand::GetToolTip(IShellItemArray*, LPWSTR* ppszIn
 
 STDMETHODIMP MorphixExplorerCommand::GetCanonicalName(GUID* pguidCommandName)
 {
+    // Required COM identity for this command.
     if (!pguidCommandName)
     {
         return E_POINTER;
@@ -46,6 +49,7 @@ STDMETHODIMP MorphixExplorerCommand::GetCanonicalName(GUID* pguidCommandName)
 
 STDMETHODIMP MorphixExplorerCommand::GetState(IShellItemArray*, BOOL, EXPCMDSTATE* pCmdState)
 {
+    // Always enabled; change this to disable based on selection.
     if (!pCmdState)
     {
         return E_POINTER;
@@ -56,6 +60,7 @@ STDMETHODIMP MorphixExplorerCommand::GetState(IShellItemArray*, BOOL, EXPCMDSTAT
 
 STDMETHODIMP MorphixExplorerCommand::Invoke(IShellItemArray* psiItemArray, IBindCtx*)
 {
+    // Actual action when the menu item is clicked.
     if (!psiItemArray)
     {
         return E_INVALIDARG;
@@ -113,6 +118,7 @@ STDMETHODIMP MorphixExplorerCommand::Invoke(IShellItemArray* psiItemArray, IBind
 
 STDMETHODIMP MorphixExplorerCommand::GetFlags(EXPCMDFLAGS* pFlags)
 {
+    // Default command behavior.
     if (!pFlags)
     {
         return E_POINTER;
@@ -123,6 +129,7 @@ STDMETHODIMP MorphixExplorerCommand::GetFlags(EXPCMDFLAGS* pFlags)
 
 STDMETHODIMP MorphixExplorerCommand::EnumSubCommands(IEnumExplorerCommand** ppEnum)
 {
+    // No subcommands for now.
     if (ppEnum)
     {
         *ppEnum = nullptr;

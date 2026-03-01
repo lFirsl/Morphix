@@ -3,7 +3,7 @@
 #include <wrl/implements.h>
 #include <shobjidl.h>
 
-class __declspec(uuid("7D1FE7DD-4F01-41E3-9C77-A31B841C8C7C")) MorphixExplorerCommand :
+class __declspec(uuid("f60c4d97-c657-4de7-a570-6d01a6a46513")) MorphixExplorerCommand :
     public Microsoft::WRL::RuntimeClass<
         Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
         IExplorerCommand>

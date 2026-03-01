@@ -52,7 +52,7 @@
         <desktop4:Extension Category="windows.fileExplorerContextMenus">
           <desktop4:FileExplorerContextMenus>
             <desktop5:ItemType Type=".mp4">
-              <desktop5:Verb Id="MorphixCompress20MB" Clsid="7D1FE7DD-4F01-41E3-9C77-A31B841C8C7C" />
+              <desktop5:Verb Id="MorphixCompress20MB" Clsid="f60c4d97-c657-4de7-a570-6d01a6a46513" />
             </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>
@@ -61,7 +61,7 @@
           <com:ComServer>
             <com:SurrogateServer DisplayName="Morphix Context Menu">
               <com:Class
-                Id="7D1FE7DD-4F01-41E3-9C77-A31B841C8C7C"
+                Id="f60c4d97-c657-4de7-a570-6d01a6a46513"
                 Path="ContextMenu\MorphixContextMenu.dll"
                 ThreadingModel="STA" />
             </com:SurrogateServer>

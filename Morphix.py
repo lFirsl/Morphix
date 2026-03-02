@@ -1,4 +1,4 @@
-from morphix_core.Morphix import main
+from morphix_core.cli import main
 
 
 if __name__ == "__main__":

@@ -70,6 +70,18 @@ def parse_args():
         action="store_true",
         help="On Windows, re-launch without a console window.",
     )
+    parser.add_argument(
+        "--quality",
+        choices=["low", "medium", "high"],
+        default="medium",
+        # Target bpp thresholds used for auto-scaling decisions.
+        help="Target quality for auto-scaling (low~0.05, medium~0.07, high~0.10 bpp).",
+    )
+    parser.add_argument(
+        "--resolution",
+        # Manual override for output resolution.
+        help="Force output resolution, e.g. 1280x720. Overrides auto-scaling.",
+    )
     args = parser.parse_args()
 
     if args.test:

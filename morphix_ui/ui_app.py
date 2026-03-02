@@ -1,9 +1,15 @@
 import os
-import subprocess
 import sys
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+# Ensure repo root is on sys.path so morphix_core can be imported when run directly.
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
+from morphix_core.core import run
 
 def find_morphix_exe():
     candidates = [
@@ -47,8 +53,17 @@ class MorphixUI(tk.Tk):
             row=3, column=1, sticky="e", padx=10, pady=12
         )
 
+        tk.Label(self, text="Tip:", font=("Segoe UI", 10, "bold")).grid(
+            row=4, column=0, sticky="w", **padding
+        )
+        tk.Message(
+            self,
+            text="Lower target sizes can look blurry. If quality matters, try a higher size or a higher quality setting.",
+            width=420,
+        ).grid(row=4, column=1, columnspan=2, sticky="w", **padding)
+
         self.status = tk.Label(self, text="", fg="#444444")
-        self.status.grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=6)
+        self.status.grid(row=5, column=0, columnspan=3, sticky="w", padx=10, pady=6)
 
     def browse_input(self):
         path = filedialog.askopenfilename(
@@ -82,24 +97,34 @@ class MorphixUI(tk.Tk):
             messagebox.showerror("Morphix", "Please enter a target size in MB.")
             return
 
-        exe_path = find_morphix_exe()
-        if exe_path:
-            cmd = [exe_path, input_path, "--max-mb", size_mb]
-        else:
-            cmd = [sys.executable, "-m", "morphix_core.Morphix", input_path, "--max-mb", size_mb]
-
-        if output_path:
-            cmd += ["--output", output_path]
-
         self.status.config(text="Running compression...")
-        try:
-            subprocess.Popen(cmd, cwd=os.getcwd())
-        except OSError as exc:
-            messagebox.showerror("Morphix", f"Failed to start Morphix.\n{exc}")
-            self.status.config(text="")
-            return
 
-        self.status.config(text="Started. Check the output file when done.")
+        def progress_cb(pct, phase):
+            # Update status with coarse phase info.
+            if phase == "PASS1":
+                self.status.config(text=f"Pass 1... {pct:.1f}%")
+            else:
+                self.status.config(text=f"Pass 2... {pct:.1f}%")
+
+        def worker():
+            try:
+                run(
+                    input_path=input_path,
+                    max_mb=float(size_mb),
+                    output_path=output_path or None,
+                    quality="medium",
+                    resolution=None,
+                    overwrite=True,
+                    disable_logs=True,
+                    progress=True,
+                    progress_cb=progress_cb,
+                )
+                self.status.config(text="Done.")
+            except Exception as exc:
+                self.status.config(text=f"Failed: {exc}")
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
 
 
 if __name__ == "__main__":

@@ -68,21 +68,100 @@ def popen_no_window_kwargs():
     return {"start_new_session": True}
 
 
-def detect_cuda():
-    # Detect CUDA capability using nvidia-smi if present.
-    if shutil.which("nvidia-smi") is None:
-        return False
+def _run_text_cmd(cmd):
+    # Best-effort helper for OS commands that return text output.
     try:
         result = subprocess.run(
-            ["nvidia-smi", "-L"],
+            cmd,
             check=False,
             capture_output=True,
             text=True,
             **popen_no_window_kwargs(),
         )
     except OSError:
-        return False
-    return result.returncode == 0 and bool(result.stdout.strip())
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout or ""
+
+
+def detect_gpu_vendor():
+    # Best-effort GPU vendor detection for labeling and hwaccel selection.
+    if shutil.which("nvidia-smi") is not None:
+        output = _run_text_cmd(["nvidia-smi", "-L"])
+        if output.strip():
+            return "nvidia"
+
+    # Windows: wmic (deprecated but commonly available).
+    if os.name == "nt" and shutil.which("wmic") is not None:
+        output = _run_text_cmd(["wmic", "path", "win32_VideoController", "get", "name"])
+        for line in output.splitlines():
+            name = line.strip()
+            if not name or name.lower() == "name":
+                continue
+            lowered = name.lower()
+            if "nvidia" in lowered:
+                return "nvidia"
+            if "amd" in lowered or "radeon" in lowered:
+                return "amd"
+            if "intel" in lowered:
+                return "intel"
+
+    # Linux: lspci, if available.
+    if sys.platform.startswith("linux") and shutil.which("lspci") is not None:
+        output = _run_text_cmd(["lspci"])
+        for line in output.splitlines():
+            lowered = line.lower()
+            if "vga" not in lowered and "3d" not in lowered:
+                continue
+            if "nvidia" in lowered:
+                return "nvidia"
+            if "amd" in lowered or "radeon" in lowered:
+                return "amd"
+            if "intel" in lowered:
+                return "intel"
+
+    # macOS: system_profiler, if available.
+    if sys.platform == "darwin" and shutil.which("system_profiler") is not None:
+        output = _run_text_cmd(["system_profiler", "SPDisplaysDataType"])
+        lowered = output.lower()
+        if "nvidia" in lowered:
+            return "nvidia"
+        if "amd" in lowered or "radeon" in lowered:
+            return "amd"
+        if "intel" in lowered:
+            return "intel"
+
+    return None
+
+
+def choose_hwaccel(vendor):
+    # Select a decode hwaccel based on the detected GPU vendor and OS.
+    if vendor == "nvidia":
+        return "cuda"
+    if vendor == "amd":
+        if os.name == "nt":
+            return "d3d11va"
+        if sys.platform.startswith("linux"):
+            return "vaapi"
+    if vendor == "intel":
+        if os.name == "nt":
+            return "d3d11va"
+        if sys.platform.startswith("linux"):
+            return "vaapi"
+    return None
+
+
+def detect_device_info():
+    # Return a user-friendly device label and a preferred hwaccel string.
+    vendor = detect_gpu_vendor()
+    if vendor == "nvidia":
+        return "NVIDIA GPU", choose_hwaccel(vendor)
+    if vendor == "amd":
+        return "AMD GPU", choose_hwaccel(vendor)
+    if vendor == "intel":
+        return "Intel GPU", choose_hwaccel(vendor)
+    return "CPU", None
 
 
 def ffprobe_media(path):
@@ -143,6 +222,7 @@ class RunContext:
         self.passlog_path = None
         self.log_dir = None
         self.input_kwargs = {}
+        self.device_label = "CPU"
 
     def execute(self):
         print("Morphix Prototype")
@@ -216,9 +296,9 @@ class RunContext:
         self.video_bps = self.video_kbps * 1000
 
     def _configure_hwaccel(self):
-        # Check for CUDA and configure ffmpeg input arguments.
-        hwaccel = "cuda" if detect_cuda() else None
-        print(f"Hardware acceleration present? - {hwaccel}")
+        # Detect a GPU vendor and choose a matching decode accelerator if possible.
+        self.device_label, hwaccel = detect_device_info()
+        print(f"Compression device: {self.device_label} (hwaccel={hwaccel or 'none'})")
         self.input_kwargs = {"hwaccel": hwaccel} if hwaccel else {}
 
     def _compute_scaling(self):

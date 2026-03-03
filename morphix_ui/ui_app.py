@@ -9,7 +9,7 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-from morphix_core.core import run
+from morphix_core.core import detect_device_info, run
 
 def find_morphix_exe():
     candidates = [
@@ -26,31 +26,39 @@ class MorphixUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Morphix")
-        self.geometry("560x240")
-        self.resizable(False, False)
+        self.geometry("560x260")
+        self.minsize(520, 260)
+        self.resizable(True, True)
 
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.size_var = tk.StringVar(value="20")
 
         self._build_ui()
+        # Populate the device label on startup so it doesn't stay at CPU until run.
+        self._refresh_device_label()
 
     def _build_ui(self):
         padding = {"padx": 10, "pady": 6}
+        self.grid_columnconfigure(1, weight=1)
 
         tk.Label(self, text="Input file").grid(row=0, column=0, sticky="w", **padding)
-        tk.Entry(self, textvariable=self.input_var, width=50).grid(row=0, column=1, **padding)
+        tk.Entry(self, textvariable=self.input_var, width=50).grid(
+            row=0, column=1, sticky="ew", **padding
+        )
         tk.Button(self, text="Browse", command=self.browse_input).grid(row=0, column=2, **padding)
 
         tk.Label(self, text="Output file").grid(row=1, column=0, sticky="w", **padding)
-        tk.Entry(self, textvariable=self.output_var, width=50).grid(row=1, column=1, **padding)
+        tk.Entry(self, textvariable=self.output_var, width=50).grid(
+            row=1, column=1, sticky="ew", **padding
+        )
         tk.Button(self, text="Browse", command=self.browse_output).grid(row=1, column=2, **padding)
 
         tk.Label(self, text="Target size (MB)").grid(row=2, column=0, sticky="w", **padding)
         tk.Entry(self, textvariable=self.size_var, width=10).grid(row=2, column=1, sticky="w", **padding)
 
         tk.Button(self, text="Compress", command=self.run_compress).grid(
-            row=3, column=1, sticky="e", padx=10, pady=12
+            row=3, column=0, columnspan=3, pady=12
         )
 
         tk.Label(self, text="Tip:", font=("Segoe UI", 10, "bold")).grid(
@@ -62,8 +70,11 @@ class MorphixUI(tk.Tk):
             width=420,
         ).grid(row=4, column=1, columnspan=2, sticky="w", **padding)
 
+        self.device_status = tk.Label(self, text="Device: CPU", fg="#444444")
+        self.device_status.grid(row=5, column=0, columnspan=3, sticky="w", padx=10, pady=2)
+
         self.status = tk.Label(self, text="", fg="#444444")
-        self.status.grid(row=5, column=0, columnspan=3, sticky="w", padx=10, pady=6)
+        self.status.grid(row=6, column=0, columnspan=3, sticky="w", padx=10, pady=6)
 
     def browse_input(self):
         path = filedialog.askopenfilename(
@@ -97,14 +108,19 @@ class MorphixUI(tk.Tk):
             messagebox.showerror("Morphix", "Please enter a target size in MB.")
             return
 
+        self._refresh_device_label()
         self.status.config(text="Running compression...")
 
         def progress_cb(pct, phase):
-            # Update status with coarse phase info.
+            # Update status with pass labels and brief descriptions.
             if phase == "PASS1":
-                self.status.config(text=f"Pass 1... {pct:.1f}%")
+                self.status.config(
+                    text=f"Pass 1/2: Analyzing video for bitrate data... {pct:.1f}%"
+                )
             else:
-                self.status.config(text=f"Pass 2... {pct:.1f}%")
+                self.status.config(
+                    text=f"Pass 2/2: Encoding final output... {pct:.1f}%"
+                )
 
         def worker():
             try:
@@ -125,6 +141,11 @@ class MorphixUI(tk.Tk):
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+
+    def _refresh_device_label(self):
+        # Detect the best available device and update the UI label.
+        device_label, _ = detect_device_info()
+        self.device_status.config(text=f"Device: {device_label}")
 
 
 if __name__ == "__main__":

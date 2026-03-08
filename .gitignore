@@ -38,3 +38,7 @@ ContextMenuWrl/Release/
 ContextMenuWrl/obj/
 MorphixC.*/
 .vs/
+
+# FFmpeg binaries (keep README)
+ffmpeg_binaries/*
+!ffmpeg_binaries/README.md

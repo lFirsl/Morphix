@@ -9,7 +9,7 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-from morphix_core.core import detect_device_info, run
+from morphix_core.core import detect_device_info, find_ffmpeg_binaries, run
 
 def find_morphix_exe():
     candidates = [
@@ -27,37 +27,46 @@ class MorphixUI(tk.Tk):
         super().__init__()
         self.title("Morphix")
         self.geometry("560x260")
-        self.minsize(520, 260)
+        self.minsize(520, 340)
         self.resizable(True, True)
 
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.size_var = tk.StringVar(value="20")
+        self._is_running = False
 
         self._build_ui()
         # Populate the device label on startup so it doesn't stay at CPU until run.
         self._refresh_device_label()
+        # Show whether bundled or PATH ffmpeg is being used.
+        self._refresh_ffmpeg_label()
 
     def _build_ui(self):
         padding = {"padx": 10, "pady": 6}
         self.grid_columnconfigure(1, weight=1)
 
         tk.Label(self, text="Input file").grid(row=0, column=0, sticky="w", **padding)
-        tk.Entry(self, textvariable=self.input_var, width=50).grid(
+        self.input_entry = tk.Entry(self, textvariable=self.input_var, width=50)
+        self.input_entry.grid(
             row=0, column=1, sticky="ew", **padding
         )
-        tk.Button(self, text="Browse", command=self.browse_input).grid(row=0, column=2, **padding)
+        self.browse_input_btn = tk.Button(self, text="Browse", command=self.browse_input)
+        self.browse_input_btn.grid(row=0, column=2, **padding)
 
         tk.Label(self, text="Output file").grid(row=1, column=0, sticky="w", **padding)
-        tk.Entry(self, textvariable=self.output_var, width=50).grid(
+        self.output_entry = tk.Entry(self, textvariable=self.output_var, width=50)
+        self.output_entry.grid(
             row=1, column=1, sticky="ew", **padding
         )
-        tk.Button(self, text="Browse", command=self.browse_output).grid(row=1, column=2, **padding)
+        self.browse_output_btn = tk.Button(self, text="Browse", command=self.browse_output)
+        self.browse_output_btn.grid(row=1, column=2, **padding)
 
         tk.Label(self, text="Target size (MB)").grid(row=2, column=0, sticky="w", **padding)
-        tk.Entry(self, textvariable=self.size_var, width=10).grid(row=2, column=1, sticky="w", **padding)
+        self.size_entry = tk.Entry(self, textvariable=self.size_var, width=10)
+        self.size_entry.grid(row=2, column=1, sticky="w", **padding)
 
-        tk.Button(self, text="Compress", command=self.run_compress).grid(
+        self.compress_btn = tk.Button(self, text="Compress", command=self.run_compress)
+        self.compress_btn.grid(
             row=3, column=0, columnspan=3, pady=12
         )
 
@@ -66,15 +75,18 @@ class MorphixUI(tk.Tk):
         )
         tk.Message(
             self,
-            text="Lower target sizes can look blurry. If quality matters, try a higher size or a higher quality setting.",
+            text="Lower target sizes can look blurry. Ideally set the Target Size to the maximum you're able to.",
             width=420,
         ).grid(row=4, column=1, columnspan=2, sticky="w", **padding)
 
         self.device_status = tk.Label(self, text="Device: CPU", fg="#444444")
         self.device_status.grid(row=5, column=0, columnspan=3, sticky="w", padx=10, pady=2)
 
+        self.ffmpeg_status = tk.Label(self, text="FFmpeg: path", fg="#444444")
+        self.ffmpeg_status.grid(row=6, column=0, columnspan=3, sticky="w", padx=10, pady=2)
+
         self.status = tk.Label(self, text="", fg="#444444")
-        self.status.grid(row=6, column=0, columnspan=3, sticky="w", padx=10, pady=6)
+        self.status.grid(row=7, column=0, columnspan=3, sticky="w", padx=10, pady=6)
 
     def browse_input(self):
         path = filedialog.askopenfilename(
@@ -97,6 +109,8 @@ class MorphixUI(tk.Tk):
             self.output_var.set(path)
 
     def run_compress(self):
+        if self._is_running:
+            return
         input_path = self.input_var.get().strip()
         output_path = self.output_var.get().strip()
         size_mb = self.size_var.get().strip()
@@ -108,18 +122,21 @@ class MorphixUI(tk.Tk):
             messagebox.showerror("Morphix", "Please enter a target size in MB.")
             return
 
+        self._is_running = True
+        self._set_controls_enabled(False)
         self._refresh_device_label()
-        self.status.config(text="Running compression...")
+        self._refresh_ffmpeg_label()
+        self._set_status("Running compression...")
 
         def progress_cb(pct, phase):
             # Update status with pass labels and brief descriptions.
             if phase == "PASS1":
-                self.status.config(
-                    text=f"Pass 1/2: Analyzing video for bitrate data... {pct:.1f}%"
+                self._set_status(
+                    f"Pass 1/2: Analyzing video for bitrate data... {pct:.1f}%"
                 )
             else:
-                self.status.config(
-                    text=f"Pass 2/2: Encoding final output... {pct:.1f}%"
+                self._set_status(
+                    f"Pass 2/2: Encoding final output... {pct:.1f}%"
                 )
 
         def worker():
@@ -135,17 +152,40 @@ class MorphixUI(tk.Tk):
                     progress=True,
                     progress_cb=progress_cb,
                 )
-                self.status.config(text="Done.")
+                self._set_status("Done.")
             except Exception as exc:
-                self.status.config(text=f"Failed: {exc}")
+                self._set_status(f"Failed: {exc}")
+            finally:
+                self._is_running = False
+                self._set_controls_enabled(True)
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+
+    def _set_status(self, text):
+        # Ensure UI updates happen on the main thread.
+        self.after(0, lambda: self.status.config(text=text))
+
+    def _set_controls_enabled(self, enabled):
+        # Enable/disable all input controls safely from any thread.
+        state = "normal" if enabled else "disabled"
+        self.after(0, lambda: self.compress_btn.config(state=state))
+        self.after(0, lambda: self.input_entry.config(state=state))
+        self.after(0, lambda: self.output_entry.config(state=state))
+        self.after(0, lambda: self.size_entry.config(state=state))
+        self.after(0, lambda: self.browse_input_btn.config(state=state))
+        self.after(0, lambda: self.browse_output_btn.config(state=state))
 
     def _refresh_device_label(self):
         # Detect the best available device and update the UI label.
         device_label, _ = detect_device_info()
         self.device_status.config(text=f"Device: {device_label}")
+
+    def _refresh_ffmpeg_label(self):
+        # Detect whether bundled or PATH ffmpeg binaries are being used.
+        _, _, source = find_ffmpeg_binaries()
+        label = "bundled" if source == "bundled" else "system PATH"
+        self.ffmpeg_status.config(text=f"FFmpeg: {label}")
 
 
 if __name__ == "__main__":

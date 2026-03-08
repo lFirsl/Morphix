@@ -38,8 +38,20 @@ Python Morphix.py examples/vid1.mp4 --max-mb 0.5 --output examples/outputs/vid1_
 
 Build the EXE:
 ```bash
-py -3 -m PyInstaller --onefile --hidden-import=ffmpeg Morphix.py
+PyInstaller --onefile -n Morphix_CLI --hidden-import=ffmpeg --add-binary "ffmpeg_binaries\\bin\\ffmpeg.exe;ffmpeg" --add-binary "ffmpeg_binaries\\bin\\ffprobe.exe;ffmpeg" Morphix.py
 ```
+
+Build the UI EXE (no console):
+```bash
+PyInstaller --onefile --noconsole -n Morphix_UI --hidden-import morphix_core.core --hidden-import morphix_core.cli --hidden-import ffmpeg --add-data "morphix_core;morphix_core" --add-binary "ffmpeg_binaries\\bin\\ffmpeg.exe;ffmpeg" --add-binary "ffmpeg_binaries\\bin\\ffprobe.exe;ffmpeg" morphix_ui/ui_app.py
+```
+
+Install/Run the UI:
+```bash
+.\dist\Morphix_UI.exe
+```
+
+Note: The bundled binaries are placed into `dist\ffmpeg\` so the app can use them first (with PATH as fallback).
 
 Dependencies:
 ```bash

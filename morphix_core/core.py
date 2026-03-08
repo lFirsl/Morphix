@@ -68,106 +68,52 @@ def popen_no_window_kwargs():
     return {"start_new_session": True}
 
 
-def _run_text_cmd(cmd):
-    # Best-effort helper for OS commands that return text output.
+def find_ffmpeg_binaries():
+    # Prefer bundled binaries; fall back to PATH when not found.
+    candidates = []
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        candidates.append(os.path.join(bundle_root, "ffmpeg"))
+    candidates.append(os.path.join(os.path.dirname(sys.executable), "ffmpeg"))
+    candidates.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ffmpeg")))
+
+    for base in candidates:
+        ffmpeg_path = os.path.join(base, "ffmpeg.exe")
+        ffprobe_path = os.path.join(base, "ffprobe.exe")
+        if os.path.isfile(ffmpeg_path) and os.path.isfile(ffprobe_path):
+            return ffmpeg_path, ffprobe_path, "bundled"
+
+    return "ffmpeg", "ffprobe", "path"
+
+
+def detect_cuda():
+    # Detect CUDA capability using nvidia-smi if present.
+    if shutil.which("nvidia-smi") is None:
+        return False
     try:
         result = subprocess.run(
-            cmd,
+            ["nvidia-smi", "-L"],
             check=False,
             capture_output=True,
             text=True,
             **popen_no_window_kwargs(),
         )
     except OSError:
-        return ""
-    if result.returncode != 0:
-        return ""
-    return result.stdout or ""
-
-
-def detect_gpu_vendor():
-    # Best-effort GPU vendor detection for labeling and hwaccel selection.
-    if shutil.which("nvidia-smi") is not None:
-        output = _run_text_cmd(["nvidia-smi", "-L"])
-        if output.strip():
-            return "nvidia"
-
-    # Windows: wmic (deprecated but commonly available).
-    if os.name == "nt" and shutil.which("wmic") is not None:
-        output = _run_text_cmd(["wmic", "path", "win32_VideoController", "get", "name"])
-        for line in output.splitlines():
-            name = line.strip()
-            if not name or name.lower() == "name":
-                continue
-            lowered = name.lower()
-            if "nvidia" in lowered:
-                return "nvidia"
-            if "amd" in lowered or "radeon" in lowered:
-                return "amd"
-            if "intel" in lowered:
-                return "intel"
-
-    # Linux: lspci, if available.
-    if sys.platform.startswith("linux") and shutil.which("lspci") is not None:
-        output = _run_text_cmd(["lspci"])
-        for line in output.splitlines():
-            lowered = line.lower()
-            if "vga" not in lowered and "3d" not in lowered:
-                continue
-            if "nvidia" in lowered:
-                return "nvidia"
-            if "amd" in lowered or "radeon" in lowered:
-                return "amd"
-            if "intel" in lowered:
-                return "intel"
-
-    # macOS: system_profiler, if available.
-    if sys.platform == "darwin" and shutil.which("system_profiler") is not None:
-        output = _run_text_cmd(["system_profiler", "SPDisplaysDataType"])
-        lowered = output.lower()
-        if "nvidia" in lowered:
-            return "nvidia"
-        if "amd" in lowered or "radeon" in lowered:
-            return "amd"
-        if "intel" in lowered:
-            return "intel"
-
-    return None
-
-
-def choose_hwaccel(vendor):
-    # Select a decode hwaccel based on the detected GPU vendor and OS.
-    if vendor == "nvidia":
-        return "cuda"
-    if vendor == "amd":
-        if os.name == "nt":
-            return "d3d11va"
-        if sys.platform.startswith("linux"):
-            return "vaapi"
-    if vendor == "intel":
-        if os.name == "nt":
-            return "d3d11va"
-        if sys.platform.startswith("linux"):
-            return "vaapi"
-    return None
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def detect_device_info():
     # Return a user-friendly device label and a preferred hwaccel string.
-    vendor = detect_gpu_vendor()
-    if vendor == "nvidia":
-        return "NVIDIA GPU", choose_hwaccel(vendor)
-    if vendor == "amd":
-        return "AMD GPU", choose_hwaccel(vendor)
-    if vendor == "intel":
-        return "Intel GPU", choose_hwaccel(vendor)
+    if detect_cuda():
+        return "NVIDIA GPU", "cuda"
     return "CPU", None
 
 
-def ffprobe_media(path):
+def ffprobe_media(path, ffprobe_path):
     # Run ffprobe directly so we can suppress console windows on Windows.
     cmd = [
-        "ffprobe",
+        ffprobe_path,
         "-v",
         "error",
         "-print_format",
@@ -223,6 +169,7 @@ class RunContext:
         self.log_dir = None
         self.input_kwargs = {}
         self.device_label = "CPU"
+        self.ffmpeg_path, self.ffprobe_path, self.ffmpeg_source = find_ffmpeg_binaries()
 
     def execute(self):
         print("Morphix Prototype")
@@ -290,7 +237,7 @@ class RunContext:
 
     def _probe_media(self):
         # Use ffprobe to fetch duration and stream metadata without spawning a console.
-        self.probe = ffprobe_media(self.input_path)
+        self.probe = ffprobe_media(self.input_path, self.ffprobe_path)
         self.duration = float(self.probe["format"]["duration"])
         self.video_kbps = target_kbps_for_size_mb(self.max_mb, self.duration, audio_kbps=128)
         self.video_bps = self.video_kbps * 1000
@@ -368,7 +315,7 @@ class RunContext:
         # Enable progress reporting and parse out_time_ms from stderr.
         bar = self._maybe_create_progress_bar(phase)
         stream = stream.global_args("-progress", "pipe:2", "-nostats")
-        cmd = ffmpeg.compile(stream, overwrite_output=self.overwrite)
+        cmd = ffmpeg.compile(stream, cmd=self.ffmpeg_path, overwrite_output=self.overwrite)
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -384,7 +331,7 @@ class RunContext:
 
     def _run_ffmpeg_simple(self, stream):
         # Run without progress parsing; optionally suppress logs and console windows.
-        cmd = ffmpeg.compile(stream, overwrite_output=self.overwrite)
+        cmd = ffmpeg.compile(stream, cmd=self.ffmpeg_path, overwrite_output=self.overwrite)
         stderr_target = subprocess.DEVNULL if self.disable_logs else subprocess.PIPE
         process = subprocess.Popen(
             cmd,

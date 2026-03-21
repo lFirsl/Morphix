@@ -83,7 +83,35 @@ def find_ffmpeg_binaries():
         if os.path.isfile(ffmpeg_path) and os.path.isfile(ffprobe_path):
             return ffmpeg_path, ffprobe_path, "bundled"
 
-    return "ffmpeg", "ffprobe", "path"
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffprobe_path = shutil.which("ffprobe")
+    if ffmpeg_path and ffprobe_path:
+        return ffmpeg_path, ffprobe_path, "path"
+
+    return None, None, "missing"
+
+
+def get_ffmpeg_version(ffmpeg_path):
+    # Extract the version string from `ffmpeg -version` output.
+    if not ffmpeg_path:
+        return "missing"
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            **popen_no_window_kwargs(),
+        )
+    except OSError:
+        return "unknown"
+    if result.returncode != 0 or not result.stdout:
+        return "unknown"
+    first_line = result.stdout.splitlines()[0]
+    prefix = "ffmpeg version "
+    if first_line.startswith(prefix):
+        return first_line[len(prefix) :].split(" ", 1)[0]
+    return "unknown"
 
 
 def detect_cuda():
@@ -108,6 +136,25 @@ def detect_device_info():
     if detect_cuda():
         return "NVIDIA GPU", "cuda"
     return "CPU", None
+
+
+def get_available_devices():
+    # Return available device options in preferred order.
+    devices = [("cpu", "CPU")]
+    if detect_cuda():
+        devices.insert(0, ("nvidia", "NVIDIA GPU"))
+    return devices
+
+
+def resolve_device_info(preference):
+    # Resolve a device preference into a label and hwaccel string.
+    if preference == "cpu":
+        return "CPU", None
+    if preference == "nvidia":
+        if detect_cuda():
+            return "NVIDIA GPU", "cuda"
+        return "CPU", None
+    return detect_device_info()
 
 
 def ffprobe_media(path, ffprobe_path):
@@ -143,6 +190,7 @@ class RunContext:
         output_path=None,
         quality="medium",
         resolution=None,
+        device_preference="auto",
         overwrite=True,
         disable_logs=True,
         progress=True,
@@ -153,6 +201,7 @@ class RunContext:
         self.output_path = output_path
         self.quality = quality
         self.resolution = resolution
+        self.device_preference = device_preference
         self.overwrite = overwrite
         self.disable_logs = disable_logs
         self.progress = progress
@@ -170,9 +219,11 @@ class RunContext:
         self.input_kwargs = {}
         self.device_label = "CPU"
         self.ffmpeg_path, self.ffprobe_path, self.ffmpeg_source = find_ffmpeg_binaries()
+        self.has_audio = False
 
     def execute(self):
         print("Morphix Prototype")
+        self._ensure_ffmpeg_available()
         self._resolve_output_path()
         print(f"Proceeding with a compression down to a size of {self.max_mb}mb")
 
@@ -203,11 +254,11 @@ class RunContext:
         # Pass 2: actual encode.
         pass2_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         pass2_video = pass2_input.video
-        pass2_audio = pass2_input.audio
         if self.scale_filter:
             pass2_video = pass2_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
-        self._run_ffmpeg(
-            ffmpeg.output(
+        if self.has_audio:
+            pass2_audio = pass2_input.audio
+            pass2_stream = ffmpeg.output(
                 pass2_video,
                 pass2_audio,
                 self.output_path,
@@ -218,9 +269,19 @@ class RunContext:
                 **{"passlogfile": self.passlog_path},
                 acodec="aac",
                 audio_bitrate="128k",
-            ),
-            "PASS2",
-        )
+            )
+        else:
+            pass2_stream = ffmpeg.output(
+                pass2_video,
+                self.output_path,
+                vcodec="libx264",
+                preset="medium",
+                **{"b:v": f"{self.video_kbps}k"},
+                **{"pass": 2},
+                **{"passlogfile": self.passlog_path},
+                an=None,
+            )
+        self._run_ffmpeg(pass2_stream, "PASS2")
 
         self._cleanup_logs()
         return self.output_path
@@ -235,16 +296,29 @@ class RunContext:
         size_label = str(self.max_mb).rstrip("0").rstrip(".")
         self.output_path = os.path.join(self.input_dir, f"{base_name}_{size_label}mb{ext}")
 
+    def _ensure_ffmpeg_available(self):
+        # Fail early with a clear error if ffmpeg/ffprobe are missing.
+        if not self.ffmpeg_path or not self.ffprobe_path:
+            raise FileNotFoundError(
+                "ffmpeg/ffprobe not found. Place them in a 'ffmpeg' folder next to the app "
+                "or install them and add to PATH."
+            )
+
     def _probe_media(self):
         # Use ffprobe to fetch duration and stream metadata without spawning a console.
         self.probe = ffprobe_media(self.input_path, self.ffprobe_path)
         self.duration = float(self.probe["format"]["duration"])
         self.video_kbps = target_kbps_for_size_mb(self.max_mb, self.duration, audio_kbps=128)
         self.video_bps = self.video_kbps * 1000
+        self.has_audio = any(
+            stream.get("codec_type") == "audio" for stream in self.probe.get("streams", [])
+        )
 
     def _configure_hwaccel(self):
-        # Detect a GPU vendor and choose a matching decode accelerator if possible.
-        self.device_label, hwaccel = detect_device_info()
+        # Resolve the requested device preference to a label and hwaccel string.
+        self.device_label, hwaccel = resolve_device_info(self.device_preference)
+        if self.device_preference == "nvidia" and not detect_cuda():
+            print("NVIDIA GPU requested but not available; falling back to CPU.")
         print(f"Compression device: {self.device_label} (hwaccel={hwaccel or 'none'})")
         self.input_kwargs = {"hwaccel": hwaccel} if hwaccel else {}
 
@@ -316,18 +390,22 @@ class RunContext:
         bar = self._maybe_create_progress_bar(phase)
         stream = stream.global_args("-progress", "pipe:2", "-nostats")
         cmd = ffmpeg.compile(stream, cmd=self.ffmpeg_path, overwrite_output=self.overwrite)
+        stderr_lines = []
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             **popen_no_window_kwargs(),
         )
-        for current_seconds in self._iter_progress_seconds(process.stderr):
-            self._render_progress(current_seconds, bar, phase)
+        for current_seconds, line in self._iter_progress_seconds(process.stderr):
+            if line:
+                stderr_lines.append(line)
+            if current_seconds is not None:
+                self._render_progress(current_seconds, bar, phase)
         process.wait()
         self._finish_progress_bar(bar)
         if process.returncode != 0:
-            raise ffmpeg.Error("ffmpeg", process.stderr.read(), None)
+            raise ffmpeg.Error("ffmpeg", b"".join(stderr_lines), None)
 
     def _run_ffmpeg_simple(self, stream):
         # Run without progress parsing; optionally suppress logs and console windows.
@@ -359,7 +437,7 @@ class RunContext:
         return tqdm(total=1000, unit="permille", leave=True, desc=phase)
 
     def _iter_progress_seconds(self, stderr_stream):
-        # Yield elapsed output time in seconds from ffmpeg progress lines.
+        # Yield elapsed output time in seconds, along with raw stderr lines.
         time_re = re.compile(r"out_time_ms=(\d+)")
         while True:
             line = stderr_stream.readline()
@@ -368,7 +446,9 @@ class RunContext:
             text = line.decode(errors="ignore").strip()
             match = time_re.search(text)
             if match:
-                yield float(match.group(1)) / 1_000_000.0
+                yield float(match.group(1)) / 1_000_000.0, line
+            else:
+                yield None, line
 
     def _finish_progress_bar(self, bar):
         # Close the progress bar or emit a trailing newline for stdout mode.
@@ -408,6 +488,7 @@ def run(
     output_path=None,
     quality="medium",
     resolution=None,
+    device_preference="auto",
     overwrite=True,
     disable_logs=True,
     progress=True,
@@ -420,6 +501,7 @@ def run(
         output_path=output_path,
         quality=quality,
         resolution=resolution,
+        device_preference=device_preference,
         overwrite=overwrite,
         disable_logs=disable_logs,
         progress=progress,

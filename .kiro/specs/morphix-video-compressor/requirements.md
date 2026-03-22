@@ -89,6 +89,8 @@ This document captures the current baseline state of the application as implemen
 5. WHEN Intel GPU detection succeeds, THE Compressor SHALL use Intel hardware acceleration for video decoding and SHALL report the device label `Intel GPU`.
 6. WHEN all vendor-specific detection methods fail or raise OS-level errors, THE Compressor SHALL fall back to CPU-based decoding and SHALL report the device label `CPU`.
 7. IF any vendor detection step raises an exception, THEN THE Compressor SHALL catch the exception and proceed to the next vendor detection step without propagating the error.
+8. THE Compressor SHALL expose a `get_available_devices()` function that returns a list of `(key, label)` tuples for all detected devices in preferred order, with the best available GPU first and `("cpu", "CPU")` always included as the last entry.
+9. THE Compressor SHALL expose a `resolve_device_info(device_preference)` function that accepts a device key string and returns a `(label, hwaccel)` tuple; WHEN the requested device is unavailable, THE Compressor SHALL fall back to CPU and return `("CPU", None)`.
 
 ### Requirement 6: ffmpeg Binary Resolution
 
@@ -180,24 +182,24 @@ This document captures the current baseline state of the application as implemen
 10. WHEN compression completes successfully, THE UI SHALL display `Done.` in the status label and re-enable all controls.
 11. WHEN compression fails, THE UI SHALL display the error message in the status label and re-enable all controls.
 12. THE UI SHALL display a device status label showing the detected device label (e.g. `Device: CPU`, `Device: NVIDIA GPU`, `Device: AMD GPU`, `Device: Intel GPU`) based on hardware detection at startup.
-13. THE UI SHALL display an ffmpeg status label showing `FFmpeg: bundled` or `FFmpeg: system PATH` based on binary detection at startup.
-14. THE UI SHALL run compression in a background thread so that the UI remains responsive during encoding.
-15. THE UI SHALL apply all UI updates from background threads via the Tkinter `after` mechanism to ensure thread safety.
+13. THE UI SHALL display a device selection dropdown populated by `get_available_devices()`, defaulting to the first entry (best available GPU, or CPU if none detected), so that the user can choose which device to use for hardware-accelerated decoding.
+14. WHEN compression is running, THE UI SHALL disable the device selection dropdown along with all other input controls.
+15. THE UI SHALL display an ffmpeg status label showing the ffmpeg source and version in the format `FFmpeg: bundled (Version: X.Y.Z)` or `FFmpeg: system PATH (Version: X.Y.Z)`, where the version string is retrieved by `get_ffmpeg_version(ffmpeg_path)`.
+16. THE UI SHALL run compression in a background thread so that the UI remains responsive during encoding.
+17. THE UI SHALL apply all UI updates from background threads via the Tkinter `after` mechanism to ensure thread safety.
 
 ### Requirement 13: Windows Explorer Context Menu Extension
 
-**User Story:** As a Windows user, I want to right-click a video file in Explorer and quickly compress it with a custom target size via a native size prompt, so that I can run a headless compression without opening any application manually.
+**User Story:** As a Windows user, I want to right-click a video file in Explorer and quickly compress it to a configurable default size, so that I can run a headless compression without opening any application manually.
 
 #### Acceptance Criteria
 
 1. THE ContextMenu SHALL register as a Windows 11 top-level context menu entry via the `IExplorerCommand` COM interface.
 2. THE ContextMenu SHALL display the menu label `Compress with Morphix`.
-3. WHEN a file is right-clicked and the menu item is invoked, THE ContextMenu SHALL display a minimal native Windows input dialog prompting the user to enter a target size in MB, pre-populated with a default value of `20`.
-4. WHEN the user confirms the dialog, THE ContextMenu SHALL launch `Morphix.exe` with the selected file path as input and the confirmed size as the `--max-mb` argument.
-5. WHEN the user cancels the dialog, THE ContextMenu SHALL not launch `Morphix.exe`.
-6. THE ContextMenu SHALL construct the output path by inserting `-morphix-compressed` before the file extension of the selected file.
-7. THE ContextMenu SHALL launch `Morphix.exe` via `ShellExecuteExW` without blocking the Explorer process.
-8. THE ContextMenu SHALL be built as a 64-bit COM DLL (`MorphixContextMenu.dll`) using MSVC.
+3. WHEN the menu item is invoked, THE ContextMenu SHALL read the user-configured default compression size from the persisted settings file (as defined in Requirement 20) and launch `Morphix.exe` with the selected file path as input and that size as the `--max-mb` argument, without displaying any dialog or prompt.
+4. THE ContextMenu SHALL construct the output path by inserting `-morphix-compressed` before the file extension of the selected file.
+5. THE ContextMenu SHALL launch `Morphix.exe` via `ShellExecuteExW` without blocking the Explorer process.
+6. THE ContextMenu SHALL be built as a 64-bit COM DLL (`MorphixContextMenu.dll`) using MSVC.
 
 ### Requirement 14: MSIX Packaging and Installation
 
@@ -232,7 +234,32 @@ This document captures the current baseline state of the application as implemen
 2. THE UI SHALL pre-populate all optional fields with sensible defaults: target size `20 MB`, unit `MB`, quality `medium`, output path derived from the input filename, and overwrite enabled.
 3. WHILE advanced options are available in the UI, THE UI SHALL present them in a way that does not require interaction for the primary compression workflow.
 4. THE CLI SHALL provide defaults for all optional arguments so that a minimal invocation requires only `--input` and `--max-mb`.
-5. WHEN a user invokes the ContextMenu item, THE ContextMenu SHALL pre-populate the size prompt with `20` MB so the user can confirm without entering a value.
+5. WHEN a user invokes the "Compress with Morphix" ContextMenu item, THE ContextMenu SHALL use the user-configured default compression size from the persisted settings (as defined in Requirement 20), falling back to `20` MB if no setting has been saved.
+
+### Requirement 18: Standalone Windows Installer (Stretch Goal)
+
+**User Story:** As a Windows user, I want to install Morphix using a familiar installer wizard, so that I do not need to manually run `Add-AppxPackage` or understand MSIX packaging.
+
+#### Acceptance Criteria
+
+1. THE Installer SHALL provide a standalone executable (e.g. `.exe` produced by a tool such as Inno Setup, NSIS, or WiX) that guides the user through installation without requiring PowerShell or developer tooling.
+2. WHEN the installer runs, IT SHALL install the CLI EXE, UI EXE, and ContextMenu DLL to an appropriate location (e.g. `%ProgramFiles%\Morphix`).
+3. WHEN the installer runs, IT SHALL register the ContextMenu COM server so that the Windows Explorer right-click entries are available immediately after installation.
+4. THE Installer SHALL provide an uninstaller that removes all installed files and COM registrations.
+5. This requirement is a stretch goal and SHALL NOT block the primary Windows MSIX-based release.
+
+### Requirement 19: Cross-Platform Support (Stretch Goal)
+
+**User Story:** As a user on Linux or Android, I want to use Morphix to compress videos on my platform, so that I am not limited to Windows.
+
+#### Acceptance Criteria
+
+1. THE `morphix_core/core.py` compression engine SHALL remain the single shared business logic layer across all platforms, with no platform-specific code embedded in it beyond OS-level subprocess flag handling already covered by Requirement 10.
+2. THE Tkinter desktop UI (`morphix_ui/ui_app.py`) SHOULD run on Linux without modification, given that Tkinter is available on all major desktop platforms.
+3. Platform-specific integration features (such as the Windows Explorer context menu) SHALL be implemented as separate, per-platform modules and SHALL NOT be required for the core compression functionality to work on other platforms.
+4. WHEN porting to Linux, THE application SHALL support the same CLI interface defined in Requirement 11, with ffmpeg resolved from the system PATH when no bundled binary is present.
+5. WHEN porting to Android, THE core compression logic SHALL be invocable from a platform-appropriate UI layer (e.g. a Kivy or BeeWare-based app), with `morphix_core/core.py` used as-is.
+6. This requirement is a stretch goal and SHALL NOT block the primary Windows release. Cross-platform work SHALL begin only after a functional Windows version is complete.
 
 ### Requirement 17: Windows Explorer "Open in Morphix" Context Menu Entry
 
@@ -247,3 +274,57 @@ This document captures the current baseline state of the application as implemen
 5. THE ContextMenu SHALL register the "Open in Morphix" entry as a separate top-level item and SHALL NOT nest it under the "Compress with Morphix" entry.
 6. THE ContextMenu SHALL launch `Morphix_UI.exe` via `ShellExecuteExW` or equivalent non-blocking mechanism so that Explorer is not blocked while the UI starts.
 7. WHERE both `IExplorerCommand` implementations are packaged together, THE ContextMenu DLL MAY contain both implementations in a single DLL or they MAY be provided as separate DLLs; the packaging approach is left to the implementation.
+
+### Requirement 20: Configurable Default Context Menu Compression Size
+
+**User Story:** As a Windows user, I want to configure the default file size used by the "Compress with Morphix" context menu entry, so that I can set a target size that suits my typical use case without editing any files manually.
+
+#### Acceptance Criteria
+
+1. THE UI SHALL provide a settings section or settings window where the user can view and change the default compression size used by the "Compress with Morphix" context menu entry.
+2. THE Settings SHALL default to `20` MB when no value has been previously saved.
+3. WHEN the user enters a new default size, THE Settings SHALL accept any positive numeric value (e.g. `10`, `50`, `100`) in MB.
+4. WHEN the user saves the settings, THE Settings SHALL persist the configured default size to a settings file on disk so that the value survives application restarts.
+5. WHEN the "Compress with Morphix" context menu entry is invoked, THE ContextMenu SHALL read the persisted settings file and use the stored default size as the `--max-mb` argument passed to `Morphix.exe`.
+6. IF the settings file does not exist or cannot be read, THEN THE ContextMenu SHALL fall back to a hardcoded default of `20` MB.
+7. THE Settings SHALL store the configuration in a well-known, user-writable location (e.g. `%APPDATA%\Morphix\settings.json`) so that both the UI and the ContextMenu DLL can access it without elevated permissions.
+
+### Requirement 21: Target Size Exceeds Input File Size Validation
+
+**User Story:** As a user, I want to be warned if I try to compress a video to a size larger than the original file, so that I don't accidentally run a pointless or counterproductive operation.
+
+#### Acceptance Criteria
+
+1. WHEN the user initiates compression and the specified target size in MB is greater than or equal to the actual size of the input file in MB, THE UI SHALL display an error dialog (via `tkinter.messagebox.showerror`) with an appropriate message explaining that the target size is larger than or equal to the original file, and SHALL NOT proceed with compression.
+2. WHEN the CLI is used and the specified `--max-mb` value is greater than or equal to the actual size of the input file in MB, THE CLI SHALL print an error message to stderr and exit with a non-zero exit code without running compression.
+3. THE file size check SHALL be performed before any ffprobe or ffmpeg invocation.
+
+### Requirement 22: Low Target Size Compression Warning
+
+**User Story:** As a user, I want to be warned when my target size is so small relative to the original that the output quality will likely be unwatchable, so that I can make an informed decision before proceeding.
+
+#### Acceptance Criteria
+
+1. WHEN the specified target size is less than 3% of the original input file size, THE UI SHALL display a warning dialog (via `tkinter.messagebox.askokcancel` or equivalent) informing the user that the compression ratio is very high and the output will very likely look poor, recommending no lower than 5% of the original file size for a viewable result.
+2. WHEN the user confirms the warning dialog, THE UI SHALL proceed with compression as normal.
+3. WHEN the user cancels the warning dialog, THE UI SHALL abort compression and return to the ready state without any error.
+4. WHEN the CLI is used and the target size is less than 3% of the input file size, THE CLI SHALL print a warning message to stderr and continue with compression (non-blocking — the CLI does not prompt interactively).
+5. THE warning threshold SHALL be 3% of the original file size. The recommended minimum communicated to the user SHALL be 5% of the original file size.
+
+### Requirement 23: Core Module Decomposition
+
+**User Story:** As a developer, I want the codebase to be split into focused, single-responsibility modules so that I can quickly find and understand relevant code without reading through large monolithic files.
+
+#### Acceptance Criteria
+
+1. THE `morphix_core/` package SHALL be decomposed into focused submodules, each responsible for a single concern. At minimum the following submodules SHALL exist:
+   - `morphix_core/ffmpeg_utils.py`: ffmpeg/ffprobe binary resolution, version detection, and subprocess invocation helpers
+   - `morphix_core/gpu_detection.py`: all GPU/hardware acceleration detection logic (`detect_cuda`, AMD detection, Intel detection, `get_available_devices`, `resolve_device_info`)
+   - `morphix_core/encoding.py`: two-pass encoding orchestration, progress parsing, passlog management, and error logging (the `RunContext` class and its methods)
+   - `morphix_core/bitrate.py`: bitrate calculation, resolution scaling, and related math helpers (`target_kbps_for_size_mb`, `compute_scaled_resolution`, `clamp_even`, `parse_fps`)
+   - `morphix_core/settings.py`: reading and writing `%APPDATA%\Morphix\settings.json`, including the fallback-to-20-MB logic
+   - `morphix_core/validation.py`: input validation logic (target size vs file size check, low-ratio warning threshold calculation)
+2. THE `morphix_core/core.py` entry point SHALL remain as the public API surface, re-exporting or delegating to the submodules so that existing callers (`cli.py`, `ui_app.py`) require no import changes.
+3. ALL existing public functions and classes SHALL remain importable from `morphix_core.core` for backward compatibility.
+4. EACH submodule SHALL contain only functions and classes directly related to its stated concern — cross-cutting imports between submodules are permitted but circular imports are not.
+5. THE `morphix_ui/ui_app.py` SHALL be refactored to separate UI layout/widget construction from event handler logic, keeping each section clearly delineated with comments or by extracting helper methods.

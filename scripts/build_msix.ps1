@@ -11,6 +11,7 @@ param(
 $msixDir = Join-Path $RepoRoot "msix"
 $msixPath = Join-Path $RepoRoot "Morphix.msix"
 $exePath = Join-Path $RepoRoot "dist\Morphix.exe"
+$uiExePath = Join-Path $RepoRoot "dist\Morphix_UI.exe"
 
 # Try to find MSBuild (either on PATH or via Visual Studio's vswhere).
 function Resolve-MSBuild {
@@ -46,6 +47,10 @@ if ($CopyExe) {
     Write-Host "Copying Morphix.exe into MSIX payload..."
     # Put the EXE inside the MSIX payload directory.
     Copy-Item $exePath (Join-Path $msixDir "Morphix.exe") -Force
+    if (Test-Path $uiExePath) {
+        Write-Host "Copying Morphix_UI.exe into MSIX payload..."
+        Copy-Item $uiExePath (Join-Path $msixDir "Morphix_UI.exe") -Force
+    }
 }
 
 Write-Host "Packing MSIX..."

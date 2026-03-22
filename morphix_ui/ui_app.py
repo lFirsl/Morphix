@@ -29,7 +29,7 @@ def find_morphix_exe():
 
 
 class MorphixUI(tk.Tk):
-    def __init__(self):
+    def __init__(self, input_file=None):
         super().__init__()
         self.title("Morphix")
         self.geometry("560x280")
@@ -39,6 +39,7 @@ class MorphixUI(tk.Tk):
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.size_var = tk.StringVar(value="20")
+        self.unit_var = tk.StringVar(value="MB")
         self.device_options = get_available_devices()
         self.device_label_to_key = {label: key for key, label in self.device_options}
         default_device_label = self.device_options[0][1] if self.device_options else "CPU"
@@ -49,6 +50,9 @@ class MorphixUI(tk.Tk):
         self.output_var.trace_add("write", self._on_output_change)
 
         self._build_ui()
+        if input_file:
+            self.input_var.set(input_file)
+            self._set_output_auto(input_file)
         # Populate the device label on startup so it doesn't stay at CPU until run.
         self._refresh_device_label()
         # Show whether bundled or PATH ffmpeg is being used.
@@ -74,9 +78,11 @@ class MorphixUI(tk.Tk):
         self.browse_output_btn = tk.Button(self, text="Browse", command=self.browse_output)
         self.browse_output_btn.grid(row=1, column=2, **padding)
 
-        tk.Label(self, text="Target size (MB)").grid(row=2, column=0, sticky="w", **padding)
+        tk.Label(self, text="Target size").grid(row=2, column=0, sticky="w", **padding)
         self.size_entry = tk.Entry(self, textvariable=self.size_var, width=10)
         self.size_entry.grid(row=2, column=1, sticky="w", **padding)
+        self.unit_menu = tk.OptionMenu(self, self.unit_var, "MB", "GB")
+        self.unit_menu.grid(row=2, column=2, sticky="w", **padding)
 
         tk.Label(self, text="Device").grid(row=3, column=0, sticky="w", **padding)
         self.device_menu = tk.OptionMenu(self, self.device_var, *self.device_label_to_key.keys())
@@ -138,6 +144,10 @@ class MorphixUI(tk.Tk):
             messagebox.showerror("Morphix", "Please enter a target size in MB.")
             return
 
+        size_value = float(size_mb)
+        if self.unit_var.get() == "GB":
+            size_value = size_value * 1000
+
         self._is_running = True
         self._set_controls_enabled(False)
         self._refresh_device_label()
@@ -160,7 +170,7 @@ class MorphixUI(tk.Tk):
             try:
                 run(
                     input_path=input_path,
-                    max_mb=float(size_mb),
+                    max_mb=size_value,
                     output_path=output_path or None,
                     quality="medium",
                     resolution=None,
@@ -192,6 +202,7 @@ class MorphixUI(tk.Tk):
         self.after(0, lambda: self.input_entry.config(state=state))
         self.after(0, lambda: self.output_entry.config(state=state))
         self.after(0, lambda: self.size_entry.config(state=state))
+        self.after(0, lambda: self.unit_menu.config(state=state))
         self.after(0, lambda: self.browse_input_btn.config(state=state))
         self.after(0, lambda: self.browse_output_btn.config(state=state))
         self.after(0, lambda: self.device_menu.config(state=state))
@@ -240,5 +251,6 @@ class MorphixUI(tk.Tk):
 
 
 if __name__ == "__main__":
-    app = MorphixUI()
+    input_file = sys.argv[1] if len(sys.argv) > 1 else None
+    app = MorphixUI(input_file=input_file)
     app.mainloop()

@@ -52,7 +52,16 @@
         <desktop4:Extension Category="windows.fileExplorerContextMenus">
           <desktop4:FileExplorerContextMenus>
             <desktop5:ItemType Type=".mp4">
-              <desktop5:Verb Id="MorphixCompress20MB" Clsid="f60c4d97-c657-4de7-a570-6d01a6a46513" />
+              <desktop5:Verb Id="MorphixCompress" Clsid="f60c4d97-c657-4de7-a570-6d01a6a46513" />
+              <desktop5:Verb Id="MorphixOpen" Clsid="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type=".mkv">
+              <desktop5:Verb Id="MorphixCompress" Clsid="f60c4d97-c657-4de7-a570-6d01a6a46513" />
+              <desktop5:Verb Id="MorphixOpen" Clsid="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type=".mov">
+              <desktop5:Verb Id="MorphixCompress" Clsid="f60c4d97-c657-4de7-a570-6d01a6a46513" />
+              <desktop5:Verb Id="MorphixOpen" Clsid="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
             </desktop5:ItemType>
           </desktop4:FileExplorerContextMenus>
         </desktop4:Extension>
@@ -62,6 +71,10 @@
             <com:SurrogateServer DisplayName="Morphix Context Menu">
               <com:Class
                 Id="f60c4d97-c657-4de7-a570-6d01a6a46513"
+                Path="ContextMenu\MorphixContextMenu.dll"
+                ThreadingModel="STA" />
+              <com:Class
+                Id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 Path="ContextMenu\MorphixContextMenu.dll"
                 ThreadingModel="STA" />
             </com:SurrogateServer>

@@ -19,3 +19,20 @@ public:
     STDMETHODIMP GetFlags(EXPCMDFLAGS* pFlags) override;
     STDMETHODIMP EnumSubCommands(IEnumExplorerCommand** ppEnum) override;
 };
+
+// Second top-level context menu entry: "Open in Morphix" (Requirement 17)
+class __declspec(uuid("a1b2c3d4-e5f6-7890-abcd-ef1234567890")) MorphixOpenCommand :
+    public Microsoft::WRL::RuntimeClass<
+        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+        IExplorerCommand>
+{
+public:
+    STDMETHODIMP GetTitle(IShellItemArray* psiItemArray, LPWSTR* ppszName) override;
+    STDMETHODIMP GetIcon(IShellItemArray* psiItemArray, LPWSTR* ppszIcon) override;
+    STDMETHODIMP GetToolTip(IShellItemArray* psiItemArray, LPWSTR* ppszInfotip) override;
+    STDMETHODIMP GetCanonicalName(GUID* pguidCommandName) override;
+    STDMETHODIMP GetState(IShellItemArray* psiItemArray, BOOL fOkToBeSlow, EXPCMDSTATE* pCmdState) override;
+    STDMETHODIMP Invoke(IShellItemArray* psiItemArray, IBindCtx* pbc) override;
+    STDMETHODIMP GetFlags(EXPCMDFLAGS* pFlags) override;
+    STDMETHODIMP EnumSubCommands(IEnumExplorerCommand** ppEnum) override;
+};

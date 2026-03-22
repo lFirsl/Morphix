@@ -16,6 +16,7 @@ from morphix_core.core import (
     resolve_device_info,
     run,
 )
+from morphix_core.validation import check_low_compression_ratio, check_target_exceeds_file_size
 
 
 def find_morphix_exe():
@@ -181,6 +182,23 @@ class MorphixUI(tk.Tk):
         size_value = float(size_mb)
         if self.unit_var.get() == "GB":
             size_value = size_value * 1000
+
+        try:
+            check_target_exceeds_file_size(size_value, input_path)
+        except ValueError as exc:
+            messagebox.showerror("Morphix", str(exc))
+            return
+
+        if check_low_compression_ratio(size_value, input_path):
+            proceed = messagebox.askokcancel(
+                "Morphix — High Compression Warning",
+                "The target size is less than 3% of the original file size. "
+                "The output will very likely look poor.\n\n"
+                "For a viewable result, consider a target of at least 5% of the original file size.\n\n"
+                "Do you want to continue anyway?",
+            )
+            if not proceed:
+                return
 
         self._is_running = True
         self._set_controls_enabled(False)

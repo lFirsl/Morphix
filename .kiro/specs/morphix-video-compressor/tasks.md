@@ -332,7 +332,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - **Validates: Requirements 20.2, 20.6**
     - Test with missing file, invalid JSON, and missing/non-positive `default_mb` field; assert fallback value is `20`
 
-- [ ] 23. Module decomposition refactor
+- [x] 23. Module decomposition refactor
   - Create `morphix_core/ffmpeg_utils.py` and move all ffmpeg/ffprobe binary resolution, version detection, and subprocess helper functions into it
   - Create `morphix_core/gpu_detection.py` and move all GPU/hwaccel detection functions into it
   - Create `morphix_core/encoding.py` and move the `RunContext` class and all encoding/progress/passlog/error-log methods into it

@@ -17,6 +17,7 @@ from morphix_core.core import (
     run,
 )
 
+
 def find_morphix_exe():
     candidates = [
         os.path.join(os.getcwd(), "dist", "Morphix.exe"),
@@ -36,6 +37,7 @@ class MorphixUI(tk.Tk):
         self.minsize(520, 360)
         self.resizable(True, True)
 
+        # --- State variables ---
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.size_var = tk.StringVar(value="20")
@@ -49,7 +51,10 @@ class MorphixUI(tk.Tk):
         self._suppress_output_trace = False
         self.output_var.trace_add("write", self._on_output_change)
 
+        # --- Build UI layout ---
         self._build_ui()
+
+        # --- Post-build initialization ---
         if input_file:
             self.input_var.set(input_file)
             self._set_output_auto(input_file)
@@ -58,41 +63,60 @@ class MorphixUI(tk.Tk):
         # Show whether bundled or PATH ffmpeg is being used.
         self._refresh_ffmpeg_label()
 
+    # -------------------------------------------------------------------------
+    # Layout / widget construction
+    # -------------------------------------------------------------------------
+
     def _build_ui(self):
+        """Construct and grid all widgets. No event logic here."""
         padding = {"padx": 10, "pady": 6}
         self.grid_columnconfigure(1, weight=1)
 
+        self._build_input_row(padding)
+        self._build_output_row(padding)
+        self._build_target_size_row(padding)
+        self._build_device_row(padding)
+        self._build_compress_button(padding)
+        self._build_tip_row(padding)
+        self._build_status_labels(padding)
+
+    def _build_input_row(self, padding):
+        """Row 0: input file selector."""
         tk.Label(self, text="Input file").grid(row=0, column=0, sticky="w", **padding)
         self.input_entry = tk.Entry(self, textvariable=self.input_var, width=50)
-        self.input_entry.grid(
-            row=0, column=1, sticky="ew", **padding
-        )
+        self.input_entry.grid(row=0, column=1, sticky="ew", **padding)
         self.browse_input_btn = tk.Button(self, text="Browse", command=self.browse_input)
         self.browse_input_btn.grid(row=0, column=2, **padding)
 
+    def _build_output_row(self, padding):
+        """Row 1: output file selector."""
         tk.Label(self, text="Output file").grid(row=1, column=0, sticky="w", **padding)
         self.output_entry = tk.Entry(self, textvariable=self.output_var, width=50)
-        self.output_entry.grid(
-            row=1, column=1, sticky="ew", **padding
-        )
+        self.output_entry.grid(row=1, column=1, sticky="ew", **padding)
         self.browse_output_btn = tk.Button(self, text="Browse", command=self.browse_output)
         self.browse_output_btn.grid(row=1, column=2, **padding)
 
+    def _build_target_size_row(self, padding):
+        """Row 2: target size entry and unit selector."""
         tk.Label(self, text="Target size").grid(row=2, column=0, sticky="w", **padding)
         self.size_entry = tk.Entry(self, textvariable=self.size_var, width=10)
         self.size_entry.grid(row=2, column=1, sticky="w", **padding)
         self.unit_menu = tk.OptionMenu(self, self.unit_var, "MB", "GB")
         self.unit_menu.grid(row=2, column=2, sticky="w", **padding)
 
+    def _build_device_row(self, padding):
+        """Row 3: device selection dropdown."""
         tk.Label(self, text="Device").grid(row=3, column=0, sticky="w", **padding)
         self.device_menu = tk.OptionMenu(self, self.device_var, *self.device_label_to_key.keys())
         self.device_menu.grid(row=3, column=1, sticky="w", **padding)
 
+    def _build_compress_button(self, padding):
+        """Row 4: compress action button."""
         self.compress_btn = tk.Button(self, text="Compress", command=self.run_compress)
-        self.compress_btn.grid(
-            row=4, column=0, columnspan=3, pady=12
-        )
+        self.compress_btn.grid(row=4, column=0, columnspan=3, pady=12)
 
+    def _build_tip_row(self, padding):
+        """Row 5: quality tip message."""
         tk.Label(self, text="Tip:", font=("Segoe UI", 10, "bold")).grid(
             row=5, column=0, sticky="w", **padding
         )
@@ -102,6 +126,8 @@ class MorphixUI(tk.Tk):
             width=420,
         ).grid(row=5, column=1, columnspan=2, sticky="w", **padding)
 
+    def _build_status_labels(self, padding):
+        """Rows 6-8: device status, ffmpeg status, and general status labels."""
         self.device_status = tk.Label(self, text="Device: CPU", fg="#444444")
         self.device_status.grid(row=6, column=0, columnspan=3, sticky="w", padx=10, pady=2)
 
@@ -110,6 +136,10 @@ class MorphixUI(tk.Tk):
 
         self.status = tk.Label(self, text="", fg="#444444")
         self.status.grid(row=8, column=0, columnspan=3, sticky="w", padx=10, pady=6)
+
+    # -------------------------------------------------------------------------
+    # Event handlers — file browsing
+    # -------------------------------------------------------------------------
 
     def browse_input(self):
         path = filedialog.askopenfilename(
@@ -129,6 +159,10 @@ class MorphixUI(tk.Tk):
         )
         if path:
             self._set_output_manual(path)
+
+    # -------------------------------------------------------------------------
+    # Event handlers — compression
+    # -------------------------------------------------------------------------
 
     def run_compress(self):
         if self._is_running:
@@ -191,6 +225,10 @@ class MorphixUI(tk.Tk):
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
 
+    # -------------------------------------------------------------------------
+    # UI state helpers
+    # -------------------------------------------------------------------------
+
     def _set_status(self, text):
         # Ensure UI updates happen on the main thread.
         self.after(0, lambda: self.status.config(text=text))
@@ -227,6 +265,10 @@ class MorphixUI(tk.Tk):
     def _get_device_preference(self):
         # Map the selected label to a device key for the core logic.
         return self.device_label_to_key.get(self.device_var.get(), "auto")
+
+    # -------------------------------------------------------------------------
+    # Output path helpers
+    # -------------------------------------------------------------------------
 
     def _set_output_auto(self, input_path):
         # Auto-generate output path based on the selected input.

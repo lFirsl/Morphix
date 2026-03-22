@@ -9,7 +9,7 @@ from morphix_core.core import RunContext
 
 def make_ctx(input_path, max_mb=15, output_path=None):
     """Create a RunContext without triggering ffmpeg binary search side-effects."""
-    with patch("morphix_core.core.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
         ctx = RunContext(input_path, max_mb, output_path=output_path)
     return ctx
 
@@ -320,7 +320,7 @@ def test_bpp_threshold_high_is_0_10():
 
 def make_ctx_with_probe(resolution=None, probe_streams=None):
     """Create a RunContext with a pre-populated probe dict for _compute_scaling tests."""
-    with patch("morphix_core.core.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
         ctx = RunContext("/fake/video.mp4", max_mb=15, resolution=resolution)
     ctx.probe = {"streams": probe_streams or []}
     ctx.video_bps = 1_000_000  # 1 Mbps default
@@ -478,37 +478,37 @@ from morphix_core.core import (
 def test_detect_cuda_returns_true_when_nvidia_smi_exits_0_with_output():
     """NVIDIA detected when nvidia-smi exits 0 with GPU output."""
     mock_result = type("R", (), {"returncode": 0, "stdout": "GPU 0: NVIDIA GeForce RTX 3080\n"})()
-    with patch("morphix_core.core.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.core.subprocess.run", return_value=mock_result):
+    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
+         patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result):
         assert detect_cuda() is True
 
 
 def test_detect_cuda_returns_false_when_nvidia_smi_not_on_path():
     """NVIDIA not detected when nvidia-smi is absent from PATH."""
-    with patch("morphix_core.core.shutil.which", return_value=None):
+    with patch("morphix_core.gpu_detection.shutil.which", return_value=None):
         assert detect_cuda() is False
 
 
 def test_detect_cuda_returns_false_when_nvidia_smi_exits_nonzero():
     """NVIDIA not detected when nvidia-smi exits with non-zero code."""
     mock_result = type("R", (), {"returncode": 1, "stdout": ""})()
-    with patch("morphix_core.core.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.core.subprocess.run", return_value=mock_result):
+    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
+         patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result):
         assert detect_cuda() is False
 
 
 def test_detect_cuda_returns_false_when_nvidia_smi_exits_0_but_no_output():
     """NVIDIA not detected when nvidia-smi exits 0 but produces no output."""
     mock_result = type("R", (), {"returncode": 0, "stdout": ""})()
-    with patch("morphix_core.core.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.core.subprocess.run", return_value=mock_result):
+    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
+         patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result):
         assert detect_cuda() is False
 
 
 def test_detect_cuda_returns_false_on_oserror():
     """NVIDIA detection returns False (not raises) when subprocess raises OSError."""
-    with patch("morphix_core.core.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.core.subprocess.run", side_effect=OSError("not found")):
+    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
+         patch("morphix_core.gpu_detection.subprocess.run", side_effect=OSError("not found")):
         assert detect_cuda() is False
 
 
@@ -516,7 +516,7 @@ def test_detect_cuda_returns_false_on_oserror():
 
 def test_detect_device_info_returns_nvidia_when_cuda_detected():
     """detect_device_info returns ('NVIDIA GPU', 'cuda') when CUDA is available."""
-    with patch("morphix_core.core.detect_cuda", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=True):
         label, hwaccel = detect_device_info()
     assert label == "NVIDIA GPU"
     assert hwaccel == "cuda"
@@ -524,8 +524,8 @@ def test_detect_device_info_returns_nvidia_when_cuda_detected():
 
 def test_detect_device_info_returns_amd_when_nvidia_fails_amd_succeeds():
     """detect_device_info returns ('AMD GPU', 'amf') when NVIDIA fails but AMD succeeds."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=True):
         label, hwaccel = detect_device_info()
     assert label == "AMD GPU"
     assert hwaccel == "amf"
@@ -533,9 +533,9 @@ def test_detect_device_info_returns_amd_when_nvidia_fails_amd_succeeds():
 
 def test_detect_device_info_returns_intel_when_nvidia_and_amd_fail():
     """detect_device_info returns ('Intel GPU', 'qsv') when NVIDIA and AMD fail but Intel succeeds."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=True):
         label, hwaccel = detect_device_info()
     assert label == "Intel GPU"
     assert hwaccel == "qsv"
@@ -543,9 +543,9 @@ def test_detect_device_info_returns_intel_when_nvidia_and_amd_fail():
 
 def test_detect_device_info_returns_cpu_when_all_fail():
     """detect_device_info returns ('CPU', None) when all vendor detections fail."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
         label, hwaccel = detect_device_info()
     assert label == "CPU"
     assert hwaccel is None
@@ -555,8 +555,8 @@ def test_detect_device_info_returns_cpu_when_all_fail():
 
 def test_detect_device_info_swallows_nvidia_exception_falls_back_to_amd():
     """Exception from NVIDIA detection is caught; AMD is tried next."""
-    with patch("morphix_core.core.detect_cuda", side_effect=RuntimeError("boom")), \
-         patch("morphix_core.core.detect_amd", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=RuntimeError("boom")), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=True):
         label, hwaccel = detect_device_info()
     assert label == "AMD GPU"
     assert hwaccel == "amf"
@@ -564,9 +564,9 @@ def test_detect_device_info_swallows_nvidia_exception_falls_back_to_amd():
 
 def test_detect_device_info_swallows_amd_exception_falls_back_to_intel():
     """Exception from AMD detection is caught; Intel is tried next."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", side_effect=RuntimeError("boom")), \
-         patch("morphix_core.core.detect_intel", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", side_effect=RuntimeError("boom")), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=True):
         label, hwaccel = detect_device_info()
     assert label == "Intel GPU"
     assert hwaccel == "qsv"
@@ -574,9 +574,9 @@ def test_detect_device_info_swallows_amd_exception_falls_back_to_intel():
 
 def test_detect_device_info_swallows_intel_exception_falls_back_to_cpu():
     """Exception from Intel detection is caught; CPU fallback is used."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", side_effect=RuntimeError("boom")):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", side_effect=RuntimeError("boom")):
         label, hwaccel = detect_device_info()
     assert label == "CPU"
     assert hwaccel is None
@@ -584,9 +584,9 @@ def test_detect_device_info_swallows_intel_exception_falls_back_to_cpu():
 
 def test_detect_device_info_swallows_all_exceptions_returns_cpu():
     """All vendor exceptions are caught; CPU fallback is returned without propagating."""
-    with patch("morphix_core.core.detect_cuda", side_effect=Exception("nvidia error")), \
-         patch("morphix_core.core.detect_amd", side_effect=Exception("amd error")), \
-         patch("morphix_core.core.detect_intel", side_effect=Exception("intel error")):
+    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=Exception("nvidia error")), \
+         patch("morphix_core.gpu_detection.detect_amd", side_effect=Exception("amd error")), \
+         patch("morphix_core.gpu_detection.detect_intel", side_effect=Exception("intel error")):
         label, hwaccel = detect_device_info()
     assert label == "CPU"
     assert hwaccel is None
@@ -596,18 +596,18 @@ def test_detect_device_info_swallows_all_exceptions_returns_cpu():
 
 def test_get_available_devices_always_ends_with_cpu():
     """get_available_devices() always ends with ('cpu', 'CPU')."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU")
 
 
 def test_get_available_devices_ends_with_cpu_when_nvidia_present():
     """get_available_devices() ends with ('cpu', 'CPU') even when NVIDIA is detected."""
-    with patch("morphix_core.core.detect_cuda", return_value=True), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=True), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU")
     assert ("nvidia", "NVIDIA GPU") in devices
@@ -615,9 +615,9 @@ def test_get_available_devices_ends_with_cpu_when_nvidia_present():
 
 def test_get_available_devices_gpu_first_cpu_last():
     """GPU entries appear before CPU in get_available_devices()."""
-    with patch("morphix_core.core.detect_cuda", return_value=True), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=True), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
         devices = get_available_devices()
     keys = [k for k, _ in devices]
     assert keys.index("nvidia") < keys.index("cpu")
@@ -625,18 +625,18 @@ def test_get_available_devices_gpu_first_cpu_last():
 
 def test_get_available_devices_only_cpu_when_no_gpu():
     """get_available_devices() returns only [('cpu', 'CPU')] when no GPU detected."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
         devices = get_available_devices()
     assert devices == [("cpu", "CPU")]
 
 
 def test_get_available_devices_swallows_exceptions_still_ends_with_cpu():
     """Exceptions from GPU detection are swallowed; CPU is still last entry."""
-    with patch("morphix_core.core.detect_cuda", side_effect=Exception("err")), \
-         patch("morphix_core.core.detect_amd", side_effect=Exception("err")), \
-         patch("morphix_core.core.detect_intel", side_effect=Exception("err")):
+    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=Exception("err")), \
+         patch("morphix_core.gpu_detection.detect_amd", side_effect=Exception("err")), \
+         patch("morphix_core.gpu_detection.detect_intel", side_effect=Exception("err")):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU")
 
@@ -652,7 +652,7 @@ def test_resolve_device_info_cpu_preference_returns_cpu():
 
 def test_resolve_device_info_nvidia_available_returns_nvidia():
     """resolve_device_info('nvidia') returns ('NVIDIA GPU', 'cuda') when CUDA available."""
-    with patch("morphix_core.core.detect_cuda", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=True):
         label, hwaccel = resolve_device_info("nvidia")
     assert label == "NVIDIA GPU"
     assert hwaccel == "cuda"
@@ -660,7 +660,7 @@ def test_resolve_device_info_nvidia_available_returns_nvidia():
 
 def test_resolve_device_info_nvidia_unavailable_falls_back_to_cpu():
     """resolve_device_info('nvidia') falls back to ('CPU', None) when CUDA unavailable."""
-    with patch("morphix_core.core.detect_cuda", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False):
         label, hwaccel = resolve_device_info("nvidia")
     assert label == "CPU"
     assert hwaccel is None
@@ -668,7 +668,7 @@ def test_resolve_device_info_nvidia_unavailable_falls_back_to_cpu():
 
 def test_resolve_device_info_amd_available_returns_amd():
     """resolve_device_info('amd') returns ('AMD GPU', 'amf') when AMD available."""
-    with patch("morphix_core.core.detect_amd", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_amd", return_value=True):
         label, hwaccel = resolve_device_info("amd")
     assert label == "AMD GPU"
     assert hwaccel == "amf"
@@ -676,7 +676,7 @@ def test_resolve_device_info_amd_available_returns_amd():
 
 def test_resolve_device_info_amd_unavailable_falls_back_to_cpu():
     """resolve_device_info('amd') falls back to ('CPU', None) when AMD unavailable."""
-    with patch("morphix_core.core.detect_amd", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_amd", return_value=False):
         label, hwaccel = resolve_device_info("amd")
     assert label == "CPU"
     assert hwaccel is None
@@ -684,7 +684,7 @@ def test_resolve_device_info_amd_unavailable_falls_back_to_cpu():
 
 def test_resolve_device_info_intel_available_returns_intel():
     """resolve_device_info('intel') returns ('Intel GPU', 'qsv') when Intel available."""
-    with patch("morphix_core.core.detect_intel", return_value=True):
+    with patch("morphix_core.gpu_detection.detect_intel", return_value=True):
         label, hwaccel = resolve_device_info("intel")
     assert label == "Intel GPU"
     assert hwaccel == "qsv"
@@ -692,7 +692,7 @@ def test_resolve_device_info_intel_available_returns_intel():
 
 def test_resolve_device_info_intel_unavailable_falls_back_to_cpu():
     """resolve_device_info('intel') falls back to ('CPU', None) when Intel unavailable."""
-    with patch("morphix_core.core.detect_intel", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_intel", return_value=False):
         label, hwaccel = resolve_device_info("intel")
     assert label == "CPU"
     assert hwaccel is None
@@ -700,9 +700,9 @@ def test_resolve_device_info_intel_unavailable_falls_back_to_cpu():
 
 def test_resolve_device_info_unknown_key_uses_auto_detection():
     """resolve_device_info with unknown key falls back to detect_device_info()."""
-    with patch("morphix_core.core.detect_cuda", return_value=False), \
-         patch("morphix_core.core.detect_amd", return_value=False), \
-         patch("morphix_core.core.detect_intel", return_value=False):
+    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
+         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
         label, hwaccel = resolve_device_info("unknown_device")
     assert label == "CPU"
     assert hwaccel is None
@@ -710,7 +710,7 @@ def test_resolve_device_info_unknown_key_uses_auto_detection():
 
 def test_resolve_device_info_nvidia_exception_falls_back_to_cpu():
     """resolve_device_info('nvidia') falls back to CPU when detect_cuda raises."""
-    with patch("morphix_core.core.detect_cuda", side_effect=Exception("err")):
+    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=Exception("err")):
         label, hwaccel = resolve_device_info("nvidia")
     assert label == "CPU"
     assert hwaccel is None
@@ -740,8 +740,8 @@ def test_find_ffmpeg_binaries_returns_bundled_when_meipass_has_both(tmp_path):
     ffmpeg_exe = os.path.join(bundle, "ffmpeg.exe")
     ffprobe_exe = os.path.join(bundle, "ffprobe.exe")
 
-    with patch("morphix_core.core.sys") as mock_sys, \
-         patch("morphix_core.core.os.path.isfile") as mock_isfile:
+    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
+         patch("morphix_core.ffmpeg_utils.os.path.isfile") as mock_isfile:
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = "/some/python.exe"
         mock_isfile.side_effect = lambda p: p in (ffmpeg_exe, ffprobe_exe)
@@ -768,8 +768,8 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffprobe(tmp_path):
             return True  # exe dir has both
         return False
 
-    with patch("morphix_core.core.sys") as mock_sys, \
-         patch("morphix_core.core.os.path.isfile", side_effect=isfile):
+    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
+         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
 
@@ -794,8 +794,8 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffmpeg(tmp_path):
             return True
         return False
 
-    with patch("morphix_core.core.sys") as mock_sys, \
-         patch("morphix_core.core.os.path.isfile", side_effect=isfile):
+    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
+         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
 
@@ -806,9 +806,9 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffmpeg(tmp_path):
 
 def test_find_ffmpeg_binaries_falls_back_to_path_when_no_candidate_has_both():
     """Falls back to ('ffmpeg', 'ffprobe', 'path') when no candidate directory has both binaries."""
-    with patch("morphix_core.core.sys") as mock_sys, \
-         patch("morphix_core.core.os.path.isfile", return_value=False), \
-         patch("morphix_core.core.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"):
+    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
+         patch("morphix_core.ffmpeg_utils.os.path.isfile", return_value=False), \
+         patch("morphix_core.ffmpeg_utils.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"):
         mock_sys._MEIPASS = None
         mock_sys.executable = "/usr/bin/python3"
 
@@ -819,9 +819,9 @@ def test_find_ffmpeg_binaries_falls_back_to_path_when_no_candidate_has_both():
 
 def test_find_ffmpeg_binaries_returns_missing_when_no_binaries_anywhere():
     """Returns (None, None, 'missing') when no bundled or PATH binaries exist."""
-    with patch("morphix_core.core.sys") as mock_sys, \
-         patch("morphix_core.core.os.path.isfile", return_value=False), \
-         patch("morphix_core.core.shutil.which", return_value=None):
+    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
+         patch("morphix_core.ffmpeg_utils.os.path.isfile", return_value=False), \
+         patch("morphix_core.ffmpeg_utils.shutil.which", return_value=None):
         mock_sys._MEIPASS = None
         mock_sys.executable = "/usr/bin/python3"
 
@@ -844,8 +844,8 @@ def test_find_ffmpeg_binaries_meipass_checked_first(tmp_path):
     def isfile(p):
         return p in (ffmpeg_bundle, ffprobe_bundle, ffmpeg_exe, ffprobe_exe)
 
-    with patch("morphix_core.core.sys") as mock_sys, \
-         patch("morphix_core.core.os.path.isfile", side_effect=isfile):
+    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
+         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
 
@@ -863,8 +863,8 @@ def test_find_ffmpeg_binaries_no_meipass_uses_exe_dir(tmp_path):
     def isfile(p):
         return p in (ffmpeg_exe, ffprobe_exe)
 
-    with patch("morphix_core.core.sys") as mock_sys, \
-         patch("morphix_core.core.os.path.isfile", side_effect=isfile):
+    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
+         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
         # No _MEIPASS attribute at all
         del mock_sys._MEIPASS
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
@@ -885,7 +885,7 @@ from unittest.mock import MagicMock, call
 
 def make_ctx_for_progress(progress=True, progress_cb=None, duration=100.0):
     """Create a RunContext wired for progress tests (no real ffmpeg needed)."""
-    with patch("morphix_core.core.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
         ctx = RunContext("/fake/video.mp4", max_mb=15, progress=progress, progress_cb=progress_cb)
     ctx.duration = duration
     ctx.log_dir = "/tmp/fake_log"
@@ -1034,7 +1034,7 @@ def test_run_ffmpeg_with_progress_used_when_progress_enabled():
 
 def make_ctx_for_logs(input_path):
     """Create a RunContext for log-related tests without triggering ffmpeg search."""
-    with patch("morphix_core.core.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
         ctx = RunContext(input_path, max_mb=15)
     return ctx
 
@@ -1122,7 +1122,7 @@ import ffmpeg as ffmpeg_lib
 def make_ctx_for_error_log(tmp_path):
     """Create a RunContext with log_dir set to a real temp directory."""
     input_file = str(tmp_path / "video.mp4")
-    with patch("morphix_core.core.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
         ctx = RunContext(input_file, max_mb=15)
     ctx.log_dir = str(tmp_path / ".output")
     os.makedirs(ctx.log_dir, exist_ok=True)
@@ -1209,27 +1209,27 @@ from morphix_core.core import popen_no_window_kwargs
 
 def test_popen_no_window_kwargs_returns_create_no_window_on_nt():
     """Returns {'creationflags': CREATE_NO_WINDOW} when os.name == 'nt'."""
-    with patch("morphix_core.core.os.name", "nt"):
+    with patch("morphix_core.ffmpeg_utils.os.name", "nt"):
         result = popen_no_window_kwargs()
     assert result == {"creationflags": _subprocess.CREATE_NO_WINDOW}
 
 
 def test_popen_no_window_kwargs_returns_start_new_session_on_posix():
     """Returns {'start_new_session': True} when os.name == 'posix'."""
-    with patch("morphix_core.core.os.name", "posix"):
+    with patch("morphix_core.ffmpeg_utils.os.name", "posix"):
         result = popen_no_window_kwargs()
     assert result == {"start_new_session": True}
 
 
 def test_popen_no_window_kwargs_returns_start_new_session_on_non_nt():
     """Returns {'start_new_session': True} when os.name == 'linux'."""
-    with patch("morphix_core.core.os.name", "linux"):
+    with patch("morphix_core.ffmpeg_utils.os.name", "linux"):
         result = popen_no_window_kwargs()
     assert result == {"start_new_session": True}
 
 
 def test_popen_no_window_kwargs_create_no_window_value_is_correct():
     """On os.name == 'nt', result['creationflags'] equals subprocess.CREATE_NO_WINDOW."""
-    with patch("morphix_core.core.os.name", "nt"):
+    with patch("morphix_core.ffmpeg_utils.os.name", "nt"):
         result = popen_no_window_kwargs()
     assert result["creationflags"] == _subprocess.CREATE_NO_WINDOW

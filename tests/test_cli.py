@@ -1,6 +1,6 @@
 import sys
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 
 def parse_args_with(argv):
@@ -114,3 +114,78 @@ def test_error_when_max_mb_missing_without_test():
 def test_resolution_argument():
     args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--resolution", "1280x720"])
     assert args.resolution == "1280x720"
+
+
+# 18. --quality invalid choice exits
+def test_quality_invalid_choice_exits():
+    with pytest.raises(SystemExit):
+        parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--quality", "ultra"])
+
+
+# 19. --overwrite explicit flag
+def test_overwrite_explicit_flag():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--overwrite"])
+    assert args.overwrite is True
+
+
+# 20. --progress explicit flag
+def test_progress_explicit_flag():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--progress"])
+    assert args.progress is True
+
+
+# 21. --disable-logs explicit flag
+def test_disable_logs_explicit_flag():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--disable-logs"])
+    assert args.disable_logs is True
+
+
+# 22. --test flag does not override explicitly provided input
+def test_test_flag_does_not_override_explicit_input():
+    args = parse_args_with(["morphix", "--test", "my_video.mp4"])
+    assert args.input == "my_video.mp4"
+    assert args.max_mb == 15
+
+
+# 23. --test flag does not override explicitly provided --max-mb
+def test_test_flag_does_not_override_explicit_max_mb():
+    args = parse_args_with(["morphix", "--test", "--max-mb", "50"])
+    assert args.max_mb == 50.0
+
+
+# 24. --no-console re-launch path (mocked subprocess)
+def test_no_console_relaunches_subprocess_on_windows():
+    """When --no-console is set on Windows, cli.main() should re-launch via subprocess and return."""
+    import importlib
+    import morphix_core.cli as cli_mod
+
+    mock_args = MagicMock()
+    mock_args.no_console = True
+
+    with patch("os.name", "nt"), \
+         patch("morphix_core.cli.parse_args", return_value=mock_args), \
+         patch("morphix_core.cli.subprocess.Popen") as mock_popen:
+        cli_mod.main()
+        mock_popen.assert_called_once()
+        call_kwargs = mock_popen.call_args[1]
+        assert call_kwargs.get("creationflags") == __import__("subprocess").CREATE_NO_WINDOW
+
+
+# 25. --no-console flag is NOT set: no re-launch
+def test_no_console_not_set_does_not_relaunch():
+    """When --no-console is not set, cli.main() should not call subprocess.Popen for re-launch."""
+    import morphix_core.cli as cli_mod
+
+    mock_args = MagicMock()
+    mock_args.no_console = False
+    mock_args.input = "video.mp4"
+    mock_args.max_mb = 10.0
+
+    with patch("morphix_core.cli.parse_args", return_value=mock_args), \
+         patch("morphix_core.cli.check_target_exceeds_file_size"), \
+         patch("morphix_core.cli.check_low_compression_ratio", return_value=False), \
+         patch("morphix_core.cli.run") as mock_run, \
+         patch("morphix_core.cli.subprocess.Popen") as mock_popen:
+        cli_mod.main()
+        mock_run.assert_called_once()
+        mock_popen.assert_not_called()

@@ -7,6 +7,10 @@
 
 using Microsoft::WRL::Module;
 
+// Namespace-scope anchors for GetModuleHandleExW address-of trick.
+static int s_anchor_compr = 0;
+static int s_anchor_open  = 0;
+
 STDMETHODIMP MorphixExplorerCommand::GetTitle(IShellItemArray*, LPWSTR* ppszName)
 {
     // Menu label shown in the Windows 11 top-level context menu.
@@ -93,7 +97,7 @@ STDMETHODIMP MorphixExplorerCommand::Invoke(IShellItemArray* psiItemArray, IBind
     HMODULE hModule = nullptr;
     GetModuleHandleExW(
         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(&MorphixExplorerCommand::Invoke),
+        reinterpret_cast<LPCWSTR>(&s_anchor_compr),
         &hModule);
     GetModuleFileNameW(hModule, dllPath, MAX_PATH);
     std::wstring dllDir = dllPath;
@@ -224,7 +228,7 @@ STDMETHODIMP MorphixOpenCommand::Invoke(IShellItemArray* psiItemArray, IBindCtx*
     HMODULE hModule = nullptr;
     GetModuleHandleExW(
         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(&MorphixOpenCommand::Invoke),
+        reinterpret_cast<LPCWSTR>(&s_anchor_open),
         &hModule);
     GetModuleFileNameW(hModule, dllPath, MAX_PATH);
     std::wstring dllDir = dllPath;

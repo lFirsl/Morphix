@@ -6,21 +6,23 @@ from morphix_core.core import find_ffmpeg_binaries, run
 
 pytestmark = pytest.mark.integration
 
+TEST_VIDEO = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", ".example_videos", "Splatoon 3 - Test Compression File.mp4")
+)
+TARGET_MB = 5
 
-def get_ffmpeg_or_skip():
+
+def get_ffprobe_or_skip():
     ffmpeg_path, ffprobe_path, source = find_ffmpeg_binaries()
-    if not ffmpeg_path or not ffprobe_path:
-        pytest.skip("ffmpeg/ffprobe not available")
-    return ffmpeg_path, ffprobe_path
-
-
-TEST_VIDEO = os.path.join(os.path.dirname(__file__), "..", ".example_videos", "Rainmaker Pre-Pop WipeOut.mp4")
-TARGET_MB = 15
+    if not ffprobe_path:
+        pytest.skip("ffprobe not available")
+    return ffprobe_path
 
 
 @pytest.mark.integration
 def test_output_file_created_at_expected_path(tmp_path):
-    ffmpeg_path, ffprobe_path = get_ffmpeg_or_skip()
+    """Output file is created at the expected path after compression."""
+    get_ffprobe_or_skip()
     if not os.path.isfile(TEST_VIDEO):
         pytest.skip("Test video not found")
 
@@ -28,12 +30,13 @@ def test_output_file_created_at_expected_path(tmp_path):
     shutil.copy2(TEST_VIDEO, input_copy)
 
     output_path = run(input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True)
-    assert os.path.isfile(output_path)
+    assert os.path.isfile(output_path), f"Expected output file at {output_path} but it was not created"
 
 
 @pytest.mark.integration
 def test_output_file_size_within_10_percent_of_target(tmp_path):
-    ffmpeg_path, ffprobe_path = get_ffmpeg_or_skip()
+    """Output file size is within 10% of the target size."""
+    get_ffprobe_or_skip()
     if not os.path.isfile(TEST_VIDEO):
         pytest.skip("Test video not found")
 
@@ -44,15 +47,15 @@ def test_output_file_size_within_10_percent_of_target(tmp_path):
 
     target_bytes = TARGET_MB * 1_000_000
     actual_bytes = os.path.getsize(output_path)
-    # Output should not exceed target by more than 10%
     assert actual_bytes <= target_bytes * 1.10, (
-        f"Output {actual_bytes} bytes exceeds target {target_bytes} bytes by more than 10%"
+        f"Output {actual_bytes / 1_000_000:.2f} MB exceeds target {TARGET_MB} MB by more than 10%"
     )
 
 
 @pytest.mark.integration
 def test_output_file_is_valid_mp4(tmp_path):
-    ffmpeg_path, ffprobe_path = get_ffmpeg_or_skip()
+    """Output file is a valid MP4 (ffprobe exits 0)."""
+    ffprobe_path = get_ffprobe_or_skip()
     if not os.path.isfile(TEST_VIDEO):
         pytest.skip("Test video not found")
 
@@ -70,7 +73,8 @@ def test_output_file_is_valid_mp4(tmp_path):
 
 @pytest.mark.integration
 def test_passlog_files_cleaned_up_after_compression(tmp_path):
-    ffmpeg_path, ffprobe_path = get_ffmpeg_or_skip()
+    """Passlog files are cleaned up after successful compression."""
+    get_ffprobe_or_skip()
     if not os.path.isfile(TEST_VIDEO):
         pytest.skip("Test video not found")
 
@@ -80,7 +84,7 @@ def test_passlog_files_cleaned_up_after_compression(tmp_path):
     run(input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True)
 
     output_dir = os.path.join(str(tmp_path), ".output")
-    # Either the directory doesn't exist (cleaned up) or it's empty
+    # Either the directory was removed (empty after cleanup) or contains no passlog files
     if os.path.exists(output_dir):
         remaining = os.listdir(output_dir)
         passlog_files = [f for f in remaining if "ffmpeg2pass" in f]

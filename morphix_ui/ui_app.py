@@ -16,6 +16,7 @@ from morphix_core.core import (
     resolve_device_info,
     run,
 )
+from morphix_core.settings import read_settings, write_settings
 from morphix_core.validation import check_low_compression_ratio, check_target_exceeds_file_size
 
 
@@ -112,9 +113,13 @@ class MorphixUI(tk.Tk):
         self.device_menu.grid(row=3, column=1, sticky="w", **padding)
 
     def _build_compress_button(self, padding):
-        """Row 4: compress action button."""
-        self.compress_btn = tk.Button(self, text="Compress", command=self.run_compress)
-        self.compress_btn.grid(row=4, column=0, columnspan=3, pady=12)
+        """Row 4: compress action button and settings button."""
+        btn_frame = tk.Frame(self)
+        btn_frame.grid(row=4, column=0, columnspan=3, pady=12)
+        self.compress_btn = tk.Button(btn_frame, text="Compress", command=self.run_compress)
+        self.compress_btn.pack(side="left", padx=6)
+        self.settings_btn = tk.Button(btn_frame, text="Settings", command=self.open_settings)
+        self.settings_btn.pack(side="left", padx=6)
 
     def _build_tip_row(self, padding):
         """Row 5: quality tip message."""
@@ -160,6 +165,56 @@ class MorphixUI(tk.Tk):
         )
         if path:
             self._set_output_manual(path)
+
+    # -------------------------------------------------------------------------
+    # Event handlers — settings
+    # -------------------------------------------------------------------------
+
+    def open_settings(self):
+        """Open a Toplevel settings dialog for configuring the default context menu MB."""
+        win = tk.Toplevel(self)
+        win.title("Morphix Settings")
+        win.resizable(False, False)
+        win.grab_set()  # modal
+
+        padding = {"padx": 12, "pady": 8}
+
+        tk.Label(win, text="Default compression size (MB):").grid(
+            row=0, column=0, sticky="w", **padding
+        )
+
+        current_mb = read_settings().get("default_mb", 20)
+        mb_var = tk.StringVar(value=str(current_mb))
+        mb_entry = tk.Entry(win, textvariable=mb_var, width=12)
+        mb_entry.grid(row=0, column=1, sticky="w", **padding)
+
+        tk.Label(
+            win,
+            text="This value is used by the 'Compress with Morphix' context menu entry.",
+            fg="#666666",
+            wraplength=320,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12, pady=(0, 8))
+
+        def save():
+            raw = mb_var.get().strip()
+            try:
+                value = float(raw)
+                if value <= 0:
+                    raise ValueError("must be positive")
+            except ValueError:
+                messagebox.showerror(
+                    "Invalid value",
+                    "Please enter a positive number for the default compression size.",
+                    parent=win,
+                )
+                return
+            write_settings(value)
+            win.destroy()
+
+        btn_frame = tk.Frame(win)
+        btn_frame.grid(row=2, column=0, columnspan=2, pady=(4, 12))
+        tk.Button(btn_frame, text="Save", command=save).pack(side="left", padx=6)
+        tk.Button(btn_frame, text="Cancel", command=win.destroy).pack(side="left", padx=6)
 
     # -------------------------------------------------------------------------
     # Event handlers — compression
@@ -255,6 +310,7 @@ class MorphixUI(tk.Tk):
         # Enable/disable all input controls safely from any thread.
         state = "normal" if enabled else "disabled"
         self.after(0, lambda: self.compress_btn.config(state=state))
+        self.after(0, lambda: self.settings_btn.config(state=state))
         self.after(0, lambda: self.input_entry.config(state=state))
         self.after(0, lambda: self.output_entry.config(state=state))
         self.after(0, lambda: self.size_entry.config(state=state))

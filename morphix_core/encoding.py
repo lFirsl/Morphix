@@ -298,9 +298,14 @@ class RunContext:
 
     def _cleanup_logs(self):
         # Remove two-pass log files and delete the log directory if empty.
-        for suffix in (".log", ".log.mbtree"):
+        # ffmpeg may append a stream index (e.g. "-0") before the extension,
+        # so we glob for all matching passlog files rather than exact names.
+        import glob
+        passlog_base = os.path.basename(self.passlog_path)
+        for filepath in glob.glob(os.path.join(self.log_dir, passlog_base + "*.log")) + \
+                        glob.glob(os.path.join(self.log_dir, passlog_base + "*.log.mbtree")):
             try:
-                os.remove(self.passlog_path + suffix)
+                os.remove(filepath)
             except FileNotFoundError:
                 pass
 

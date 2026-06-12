@@ -82,6 +82,18 @@ def parse_args():
         # Manual override for output resolution.
         help="Force output resolution, e.g. 1280x720. Overrides auto-scaling.",
     )
+    parser.add_argument(
+        "--start",
+        type=float,
+        default=None,
+        help="Trim start offset in seconds.",
+    )
+    parser.add_argument(
+        "--end",
+        type=float,
+        default=None,
+        help="Trim end offset in seconds (exclusive).",
+    )
     args = parser.parse_args()
 
     if args.test:

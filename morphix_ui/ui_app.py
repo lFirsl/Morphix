@@ -17,7 +17,11 @@ from morphix_core.core import (
     run,
 )
 from morphix_core.settings import read_settings, write_settings
-from morphix_core.validation import check_low_compression_ratio, check_target_exceeds_file_size
+from morphix_core.validation import (  # noqa: F401
+    check_low_compression_ratio,
+    check_target_exceeds_file_size,
+    check_trim_values,
+)
 
 
 def find_morphix_exe():
@@ -51,6 +55,13 @@ class MorphixUI(tk.Tk):
         self._is_running = False
         self._auto_output = True
         self._suppress_output_trace = False
+
+        # --- Trim state ---
+        self.trim_enabled_var = tk.BooleanVar(value=False)
+        self.trim_start_var = tk.StringVar(value="0:00")
+        self.trim_end_var = tk.StringVar(value="")
+        self.trim_duration_seconds = 0.0  # From video probe.
+
         self.output_var.trace_add("write", self._on_output_change)
 
         # --- Build UI layout ---
@@ -78,7 +89,15 @@ class MorphixUI(tk.Tk):
         self._build_output_row(padding)
         self._build_target_size_row(padding)
         self._build_device_row(padding)
+
+        # Visual separator before interactive controls.
+        tk.Frame(self, height=2, bd=1, relief="groove").grid(
+            row=4, column=0, columnspan=3, sticky="ew", pady=(6, 6)
+        )
+
+        self._build_trim_section(padding)
         self._build_compress_button(padding)
+        self.grid_rowconfigure(5, minsize=8)  # spacer between trim and tip
         self._build_tip_row(padding)
         self._build_status_labels(padding)
 
@@ -112,6 +131,83 @@ class MorphixUI(tk.Tk):
         self.device_menu = tk.OptionMenu(self, self.device_var, *self.device_label_to_key.keys())
         self.device_menu.grid(row=3, column=1, sticky="w", **padding)
 
+    def _build_trim_section(self, padding):
+        """Row 4: trim checkbox and conditional time entries."""
+        tk.Checkbutton(
+            self,
+            text="Enable Trim",
+            variable=self.trim_enabled_var,
+            command=self._on_trim_toggle,
+        ).grid(row=4, column=0, columnspan=3, sticky="w", **padding)
+
+        # Frame for time entries (hidden until checkbox checked).
+        self.trim_frame = tk.Frame(self)
+        self.trim_frame.grid_forget()
+
+        tk.Label(self.trim_frame, text="Start").grid(
+            row=0, column=0, sticky="w", padx=(15, 4), pady=2
+        )
+        self.trim_start_entry = tk.Entry(
+            self.trim_frame, textvariable=self.trim_start_var, width=8
+        )
+        self.trim_start_entry.grid(row=0, column=1, sticky="w", pady=2)
+
+        tk.Label(self.trim_frame, text="End").grid(
+            row=0, column=2, padx=(15, 4), pady=2
+        )
+        self.trim_end_entry = tk.Entry(
+            self.trim_frame, textvariable=self.trim_end_var, width=8
+        )
+        self.trim_end_entry.grid(row=0, column=3, sticky="w", pady=2)
+
+    def _on_trim_toggle(self):
+        """Show/hide the time entry frame when the trim checkbox changes."""
+        if self.trim_enabled_var.get():
+            # row=6 is its own dedicated row — never overlaps with Tip at row=7.
+            self.trim_frame.grid(row=6, column=0, columnspan=4, sticky="w")
+            self.grid_rowconfigure(6, minsize=32)
+        else:
+            self.trim_frame.grid_forget()
+
+    def _probe_media_duration(self, input_path: str):
+        """Probe the selected video and set trim duration bounds (non-blocking via after)."""
+        try:
+            from morphix_core.ffmpeg_utils import ffprobe_media  # noqa: F401
+            _, ffprobe_path, _ = find_ffmpeg_binaries()
+            if not ffprobe_path:
+                return
+        except ImportError:
+            return
+        result = ffprobe_media(input_path, ffprobe_path)
+        if result is None:
+            return
+        duration_s = float(result.get("format", {}).get("duration", 0))
+        if duration_s <= 0:
+            return
+        self.trim_duration_seconds = duration_s
+        # Auto-set the end field to match video length.
+        self.trim_end_var.set(self._format_time(duration_s))
+
+    @staticmethod
+    def _parse_time(time_str: str) -> float:
+        """Parse MM:SS or HH:MM:SS to seconds."""
+        parts = time_str.strip().split(":")
+        if len(parts) == 2:
+            m, s = map(int, parts)
+            return m * 60 + s
+        elif len(parts) == 3:
+            h, m, s = map(int, parts)
+            return h * 3600 + m * 60 + s
+        raise ValueError(f"Invalid time format: {time_str}")
+
+    @staticmethod
+    def _format_time(seconds: float) -> str:
+        """Format seconds as HH:MM:SS."""
+        h = int(seconds) // 3600
+        m = (int(seconds) % 3600) // 60
+        s = int(seconds) % 60
+        return f"{h}:{m:02d}:{s:02d}"
+
     def _build_compress_button(self, padding):
         """Row 4: compress action button and settings button."""
         btn_frame = tk.Frame(self)
@@ -122,26 +218,26 @@ class MorphixUI(tk.Tk):
         self.settings_btn.pack(side="left", padx=6)
 
     def _build_tip_row(self, padding):
-        """Row 5: quality tip message."""
+        """Row 7: quality tip message (below trim section at row 6)."""
         tk.Label(self, text="Tip:", font=("Segoe UI", 10, "bold")).grid(
-            row=5, column=0, sticky="w", **padding
+            row=7, column=0, sticky="w", **padding
         )
         tk.Message(
             self,
             text="Lower target sizes can look blurry. Ideally set the Target Size to the maximum you're able to.",
             width=420,
-        ).grid(row=5, column=1, columnspan=2, sticky="w", **padding)
+        ).grid(row=7, column=1, columnspan=2, sticky="w", **padding)
 
     def _build_status_labels(self, padding):
-        """Rows 6-8: device status, ffmpeg status, and general status labels."""
+        """Rows 8-10: device status, ffmpeg status, and general status labels (shifted down)."""
         self.device_status = tk.Label(self, text="Device: CPU", fg="#444444")
-        self.device_status.grid(row=6, column=0, columnspan=3, sticky="w", padx=10, pady=2)
+        self.device_status.grid(row=8, column=0, columnspan=3, sticky="w", padx=10, pady=2)
 
         self.ffmpeg_status = tk.Label(self, text="FFmpeg: path", fg="#444444")
-        self.ffmpeg_status.grid(row=7, column=0, columnspan=3, sticky="w", padx=10, pady=2)
+        self.ffmpeg_status.grid(row=9, column=0, columnspan=3, sticky="w", padx=10, pady=2)
 
         self.status = tk.Label(self, text="", fg="#444444")
-        self.status.grid(row=8, column=0, columnspan=3, sticky="w", padx=10, pady=6)
+        self.status.grid(row=10, column=0, columnspan=3, sticky="w", padx=10, pady=6)
 
     # -------------------------------------------------------------------------
     # Event handlers — file browsing
@@ -156,6 +252,8 @@ class MorphixUI(tk.Tk):
             self.input_var.set(path)
             if not self.output_var.get() or self._auto_output:
                 self._set_output_auto(path)
+            # Probe video duration for trim display (non-blocking via after).
+            self.after(0, lambda p=path: self._probe_media_duration(p))
 
     def browse_output(self):
         path = filedialog.asksaveasfilename(
@@ -255,6 +353,21 @@ class MorphixUI(tk.Tk):
             if not proceed:
                 return
 
+        # --- Trim validation ---
+        trim_start = None
+        trim_end = None
+        if self.trim_enabled_var.get():
+            try:
+                trim_start = self._parse_time(self.trim_start_var.get())
+                trim_end = self._parse_time(self.trim_end_var.get())
+            except ValueError as exc:
+                self.after(0, lambda: messagebox.showerror("Morphix", str(exc)))
+                return
+            ok, msg = check_trim_values(trim_start, trim_end, self.trim_duration_seconds)
+            if not ok:
+                self.after(0, lambda: messagebox.showerror("Morphix", msg))
+                return
+
         self._is_running = True
         self._set_controls_enabled(False)
         self._refresh_device_label()
@@ -286,6 +399,8 @@ class MorphixUI(tk.Tk):
                     disable_logs=True,
                     progress=True,
                     progress_cb=progress_cb,
+                    start=trim_start,
+                    end=trim_end,
                 )
                 self._set_status("Done.")
             except Exception as exc:
@@ -318,6 +433,8 @@ class MorphixUI(tk.Tk):
         self.after(0, lambda: self.browse_input_btn.config(state=state))
         self.after(0, lambda: self.browse_output_btn.config(state=state))
         self.after(0, lambda: self.device_menu.config(state=state))
+        self.after(0, lambda: self.trim_start_entry.config(state=state))
+        self.after(0, lambda: self.trim_end_entry.config(state=state))
 
     def _refresh_device_label(self):
         # Resolve the selected device and update the UI label.

@@ -21,3 +21,30 @@ def check_low_compression_ratio(target_mb: float, input_path: str) -> bool:
     """
     file_size_mb = os.path.getsize(input_path) / 1_000_000
     return target_mb < 0.03 * file_size_mb
+
+
+def check_trim_values(start: float | None, end: float | None, full_duration: float):
+    """Validate trim start/end values against video duration.
+
+    Returns a tuple (ok: bool, error_message: str or None).
+    Both start and end must be provided together for trimming to be enabled.
+
+    Rules:
+      1. If only one of start/end is provided, return False ("both required").
+      2. Both must be >= 0.
+      3. end must be greater than start.
+      4. (end - start) must not exceed full_duration.
+    """
+    if (start is not None) != (end is not None):
+        return False, "Both Start and End times must be provided for trimming."
+    if start is None:
+        return True, None
+    if start < 0:
+        return False, "Start time must be >= 0."
+    if end < 0:
+        return False, "End time must be >= 0."
+    if end <= start:
+        return False, "End time must be greater than Start time."
+    if (end - start) > full_duration:
+        return False, f"Trim duration ({end - start:.1f}s) exceeds video duration ({full_duration:.1f}s)."
+    return True, None

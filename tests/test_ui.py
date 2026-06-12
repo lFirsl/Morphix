@@ -38,14 +38,23 @@ class _FakeStringVar:
 
 
 class _FakeWidget:
-    """Plain widget stub that tracks state and text via config()."""
+    """Plain widget stub that tracks state, text and grid placement."""
 
     def __init__(self, *args, **kwargs):
         self._state = "normal"
         self._text = kwargs.get("text", "")
+        self._grid_info = {}  # tracked from grid() calls
 
     def grid(self, *a, **kw):
-        pass
+        self._grid_info = dict(kw)  # Tk stores only the last placement args
+
+    def grid_remove(self):
+        """Hide widget while preserving geometry for later restore."""
+        self._grid_info = {}
+
+    def grid_forget(self):
+        """Hide widget and remove from layout."""
+        self._grid_info = {}
 
     def pack(self, *a, **kw):
         pass
@@ -58,6 +67,9 @@ class _FakeWidget:
 
     def configure(self, **kwargs):
         self.config(**kwargs)
+
+    def grid_info(self, *a, **kw):
+        return self._grid_info
 
     # Allow attribute access for things like .grid_columnconfigure
     def __getattr__(self, name):
@@ -101,7 +113,16 @@ class _FakeTk(_FakeWidget):
 _tk_mod = types.ModuleType("tkinter")
 _tk_mod.Tk = _FakeTk
 _tk_mod.StringVar = _FakeStringVar
+class _FakeBooleanVar:
+    def __init__(self, value=False):
+        self._value = bool(value)
+    def get(self):
+        return self._value
+    def set(self, value):
+        self._value = bool(value)
+_tk_mod.BooleanVar = _FakeBooleanVar
 _tk_mod.Label = _FakeWidget
+_tk_mod.Checkbutton = _FakeWidget
 _tk_mod.Entry = _FakeWidget
 _tk_mod.Button = _FakeWidget
 _tk_mod.OptionMenu = _FakeWidget
@@ -324,6 +345,72 @@ class TestMorphixUIControlState(unittest.TestCase):
                          "device_menu should be re-enabled after error")
         self.assertFalse(app._is_running,
                          "_is_running should be False after error")
+
+
+# ===========================================================================
+# Trim Feature UI Tests
+# ===========================================================================
+
+
+class TestMorphixUITrimControls(unittest.TestCase):
+    """Trim checkbox and time entry behavior."""
+
+    def setUp(self):
+        self.app, _ = _make_app()
+
+    def test_trim_checkbox_exists_and_unchecked(self):
+        """The trim checkbox is rendered on startup, unchecked."""
+        assert hasattr(self.app, "trim_enabled_var")
+        assert self.app.trim_enabled_var.get() is False
+
+    def test_time_entries_exist(self):
+        """Time entry widgets exist after _build_ui."""
+        assert hasattr(self.app, "trim_frame")
+        assert hasattr(self.app, "trim_start_entry")
+        assert hasattr(self.app, "trim_end_entry")
+
+    def test_time_entries_hidden_by_default(self):
+        """Time entry frame is not visible when UI initializes."""
+        grid_info = self.app.trim_frame.grid_info()
+        assert grid_info == {} or grid_info.get("row") is None
+
+    def test_time_entries_visible_when_checked(self):
+        """Time entry frame becomes visible when trim is enabled."""
+        self.app.trim_enabled_var.set(True)
+        self.app._on_trim_toggle()
+        grid_info = self.app.trim_frame.grid_info()
+        assert grid_info.get("row") == 6
+
+    def test_time_entries_hidden_when_unchecked(self):
+        """Time entry frame hides when trim is disabled."""
+        self.app.trim_enabled_var.set(True)
+        self.app._on_trim_toggle()
+        self.app.trim_enabled_var.set(False)
+        self.app._on_trim_toggle()
+        grid_info = self.app.trim_frame.grid_info()
+        assert grid_info == {} or grid_info.get("row") is None
+
+
+class TestMorphixUITrimHelpers(unittest.TestCase):
+    """Trim helper methods correctness."""
+
+    def setUp(self):
+        self.app, _ = _make_app()
+
+    def test_parse_time_mmss(self):
+        assert self.app._parse_time("0:25") == 25.0
+        assert self.app._parse_time("1:30") == 90.0
+        assert self.app._parse_time("10:00") == 600.0
+
+    def test_parse_time_hhmmss(self):
+        assert self.app._parse_time("1:05:30") == 3930.0
+        assert self.app._parse_time("0:00:00") == 0.0
+
+    def test_format_time(self):
+        # _format_time is HH:MM:SS
+        assert self.app._format_time(0) == "0:00:00"
+        assert self.app._format_time(90) == "0:01:30"
+        assert self.app._format_time(3661) == "1:01:01"
 
 
 if __name__ == "__main__":

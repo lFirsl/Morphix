@@ -18,7 +18,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Ensure minimum clamp to 1 kbps is applied
     - _Requirements: 1.3, 1.4_
 
-  - [ ]* 2.2 Write property test for bitrate formula (Property 1)
+  - [x]* 2.2 Write property test for bitrate formula (Property 1)
     - **Property 1: Bitrate formula and minimum clamp**
     - **Validates: Requirements 1.3, 1.4**
     - Use `floats(min_value=0.1, max_value=10000)` for `size_mb` and `duration_s`
@@ -32,12 +32,12 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm output is placed in same directory as input
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-  - [ ]* 3.2 Write property test for output path derivation (Property 2)
+  - [x]* 3.2 Write property test for output path derivation (Property 2)
     - **Property 2: Output path derivation**
     - **Validates: Requirements 2.1, 2.2, 2.4**
     - Use `text` generators for filenames with extensions, `floats` for size
 
-  - [ ]* 3.3 Write property test for explicit output path preservation (Property 3)
+  - [x]* 3.3 Write property test for explicit output path preservation (Property 3)
     - **Property 3: Explicit output path is preserved**
     - **Validates: Requirements 2.3**
     - Use `text` generators for both input and explicit output paths
@@ -52,22 +52,22 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - BPP thresholds: `low`=0.05, `medium`=0.07, `high`=0.10
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-  - [ ]* 4.2 Write property test for no scaling when bpp is sufficient (Property 4)
+  - [x]* 4.2 Write property test for no scaling when bpp is sufficient (Property 4)
     - **Property 4: No scaling when bpp is sufficient**
     - **Validates: Requirements 3.3**
     - Use `integers` for dimensions/fps, construct `video_bps` to exceed threshold
 
-  - [ ]* 4.3 Write property test for scaled resolution satisfying target bpp (Property 5)
+  - [x]* 4.3 Write property test for scaled resolution satisfying target bpp (Property 5)
     - **Property 5: Scaled resolution satisfies target bpp**
     - **Validates: Requirements 3.4**
     - Use `integers` for dimensions/fps, construct `video_bps` below threshold
 
-  - [ ]* 4.4 Write property test for minimum height floor (Property 6)
+  - [x]* 4.4 Write property test for minimum height floor (Property 6)
     - **Property 6: Minimum height floor is enforced**
     - **Validates: Requirements 3.5**
     - Use inputs that would scale below 480 px
 
-  - [ ]* 4.5 Write property test for even dimensions (Property 7)
+  - [x]* 4.5 Write property test for even dimensions (Property 7)
     - **Property 7: All computed dimensions are even integers**
     - **Validates: Requirements 3.6, 4.2**
     - Use `integers(min_value=-10000, max_value=10000)` for `clamp_even`
@@ -80,12 +80,12 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm manual override bypasses auto-scaling logic entirely
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-  - [ ]* 5.2 Write property test for manual resolution override applied (Property 8)
+  - [x]* 5.2 Write property test for manual resolution override applied (Property 8)
     - **Property 8: Manual resolution override is applied**
     - **Validates: Requirements 4.1**
     - Use `integers(min_value=2, max_value=7680)` for W and H
 
-  - [ ]* 5.3 Write property test for invalid resolution producing no filter (Property 9)
+  - [x]* 5.3 Write property test for invalid resolution producing no filter (Property 9)
     - **Property 9: Invalid resolution string produces no scale filter**
     - **Validates: Requirements 4.4, 4.3**
     - Use `text` excluding valid `WIDTHxHEIGHT` patterns
@@ -101,17 +101,17 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm `resolve_device_info(preference)` returns `(label, hwaccel)` and falls back to `("CPU", None)` for unavailable devices
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9_
 
-  - [ ]* 6.2 Write property test for GPU detection exceptions swallowed (Property 10)
+  - [x]* 6.2 Write property test for GPU detection exceptions swallowed (Property 10)
     - **Property 10: GPU detection exceptions are swallowed**
     - **Validates: Requirements 5.7**
     - Mock each vendor detection step to raise arbitrary exceptions; assert `("CPU", None)` returned
 
-  - [ ]* 6.3 Write property test for CPU always in device list (Property 19)
+  - [x]* 6.3 Write property test for CPU always in device list (Property 19)
     - **Property 19: CPU is always in the device list**
     - **Validates: Requirements 5.8**
     - Mock varying GPU detection outcomes; assert `get_available_devices()` always ends with `("cpu", "CPU")`
 
-  - [ ]* 6.4 Write property test for resolve_device_info CPU fallback (Property 20)
+  - [x]* 6.4 Write property test for resolve_device_info CPU fallback (Property 20)
     - **Property 20: resolve_device_info falls back to CPU for unavailable devices**
     - **Validates: Requirements 5.9**
     - Mock GPU detection to be unavailable; use arbitrary device key strings; assert `("CPU", None)` returned
@@ -123,7 +123,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm fallback to `("ffmpeg", "ffprobe", "path")` when no candidate has both binaries
     - _Requirements: 6.1, 6.2, 6.3_
 
-  - [ ]* 7.2 Write property test for binary resolution returning first valid candidate (Property 11)
+  - [x]* 7.2 Write property test for binary resolution returning first valid candidate (Property 11)
     - **Property 11: Binary resolution returns first valid candidate**
     - **Validates: Requirements 6.1, 6.2, 6.3**
     - Mock filesystem with varying candidate layouts
@@ -137,7 +137,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm no stderr parsing when progress is disabled
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-  - [ ]* 8.2 Write property test for progress parsing yielding correct seconds (Property 12)
+  - [x]* 8.2 Write property test for progress parsing yielding correct seconds (Property 12)
     - **Property 12: Progress parsing yields correct seconds**
     - **Validates: Requirements 7.1, 7.3**
     - Use `integers(min_value=0, max_value=10**12)` for `out_time_ms` values
@@ -151,12 +151,12 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm missing passlog files during cleanup are silently skipped
     - _Requirements: 8.1, 8.2, 8.3, 8.4_
 
-  - [ ]* 9.2 Write property test for passlog path under `.output/` subdirectory (Property 13)
+  - [x]* 9.2 Write property test for passlog path under `.output/` subdirectory (Property 13)
     - **Property 13: Passlog path is under `.output/` subdirectory**
     - **Validates: Requirements 8.1**
     - Use `text` for input paths
 
-  - [ ]* 9.3 Write property test for empty `.output/` directory removed after cleanup (Property 14)
+  - [x]* 9.3 Write property test for empty `.output/` directory removed after cleanup (Property 14)
     - **Property 14: Empty `.output/` directory is removed after cleanup**
     - **Validates: Requirements 8.3**
     - Use temp directory with only passlog files
@@ -169,12 +169,12 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm exception is re-raised after writing the log
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-  - [ ]* 10.2 Write property test for ffmpeg error log content (Property 15)
+  - [x]* 10.2 Write property test for ffmpeg error log content (Property 15)
     - **Property 15: ffmpeg error log is written with correct content**
     - **Validates: Requirements 9.1, 9.2**
     - Use `binary` for stderr, `None` for missing case
 
-  - [ ]* 10.3 Write property test for exception re-raised after logging (Property 16)
+  - [x]* 10.3 Write property test for exception re-raised after logging (Property 16)
     - **Property 16: ffmpeg exception is re-raised after logging**
     - **Validates: Requirements 9.4**
     - Assert any `ffmpeg.Error` passed to `_write_ffmpeg_error` propagates from `_run_ffmpeg`
@@ -186,7 +186,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm all ffmpeg and ffprobe `Popen` calls use these kwargs
     - _Requirements: 10.1, 10.2_
 
-  - [ ]* 11.2 Write property test for subprocess flags matching OS (Property 17)
+  - [x]* 11.2 Write property test for subprocess flags matching OS (Property 17)
     - **Property 17: Subprocess flags match OS**
     - **Validates: Requirements 10.1, 10.2**
     - Parameterize by mocking `os.name` to `"nt"` and non-`"nt"` values
@@ -208,7 +208,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm error when `--max-mb` missing and `--test` not set
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 11.10, 11.11, 11.12_
 
-  - [ ]* 13.2 Write unit tests for CLI argument parsing
+  - [x]* 13.2 Write unit tests for CLI argument parsing
     - Test each argument with specific valid and invalid combinations via `parse_args`
     - Test `--test` flag defaults, `--no-console` re-launch path (mocked subprocess)
     - _Requirements: 11.1–11.12_
@@ -220,7 +220,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm GB input is converted using `size_mb = size_value * 1000` before calling `run()`
     - _Requirements: 15.1, 15.2, 15.3, 15.4_
 
-  - [ ]* 14.2 Write property test for GB-to-MB conversion (Property 18)
+  - [x]* 14.2 Write property test for GB-to-MB conversion (Property 18)
     - **Property 18: GB-to-MB conversion**
     - **Validates: Requirements 15.3, 15.4**
     - Use `floats(min_value=0.001, max_value=1000)` for GB input values
@@ -238,13 +238,13 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm device status label displays `Device: NVIDIA GPU`, `Device: AMD GPU`, `Device: Intel GPU`, or `Device: CPU` based on the resolved selection
     - _Requirements: 12.12, 12.13, 12.14_
 
-  - [x] 14.6 Verify ffmpeg status label in `morphix_ui/ui_app.py`
+  - [x] 14.5 Verify ffmpeg status label in `morphix_ui/ui_app.py`
     - Confirm label displays `FFmpeg: bundled (Version: X.Y.Z)` when bundled binaries are found
     - Confirm label displays `FFmpeg: system PATH (Version: X.Y.Z)` when falling back to PATH
     - Confirm version string is retrieved via `get_ffmpeg_version(ffmpeg_path)`
     - _Requirements: 12.15_
 
-  - [ ]* 14.5 Write unit tests for UI controls and state
+  - [x] 14.6 Write unit tests for UI controls and state
     - Test target size field pre-populated with `20`, unit selector defaults to `MB`
     - Test error dialog when input file missing, error dialog when target size missing
     - Test output field auto-populated from input filename with `-morphix-compressed` suffix
@@ -282,7 +282,7 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - _Requirements: 14.1, 14.2_
 
 - [x] 18. Integration tests
-  - [ ]* 18.1 Write integration tests against a real short video file
+  - [x]* 18.1 Write integration tests against a real short video file
     - Tag tests with `@pytest.mark.integration` for optional exclusion from fast runs
     - Test: output file created at expected path after compression
     - Test: output file size is within 10% of target size
@@ -313,8 +313,8 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - Confirm no changes are required to `core.py` for Android compatibility
     - _Requirements: 19.5_
 
-- [ ] 22. Settings UI for configurable default context menu compression size
-  - [ ] 22.1 Implement settings section/window in `morphix_ui/ui_app.py`
+- [x] 22. Settings UI for configurable default context menu compression size
+  - [x] 22.1 Implement settings section/window in `morphix_ui/ui_app.py`
     - Add a settings button or section that opens a settings window
     - Load the current default MB value from `%APPDATA%\Morphix\settings.json` on open, defaulting to `20` if the file is missing or unreadable
     - Display the current value in an editable field
@@ -322,12 +322,12 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
     - On save, write `{"default_mb": <value>}` to `%APPDATA%\Morphix\settings.json`, creating the directory if needed
     - _Requirements: 20.1, 20.2, 20.3, 20.4, 20.7_
 
-  - [ ]* 22.2 Write property test for settings round-trip (Property 21)
+  - [x]* 22.2 Write property test for settings round-trip (Property 21)
     - **Property 21: Settings round-trip**
     - **Validates: Requirements 20.3, 20.4**
     - Use `floats(min_value=0.001, max_value=100000)` for `default_mb` values; write then read back and assert equality
 
-  - [ ]* 22.3 Write property test for settings fallback to 20 MB (Property 22)
+  - [x]* 22.3 Write property test for settings fallback to 20 MB (Property 22)
     - **Property 22: Settings fallback to 20 MB when file is absent or unreadable**
     - **Validates: Requirements 20.2, 20.6**
     - Test with missing file, invalid JSON, and missing/non-positive `default_mb` field; assert fallback value is `20`
@@ -344,38 +344,38 @@ Incremental implementation tasks covering the Python core, CLI, Tkinter UI, C++ 
   - Verify all existing tests still pass after the refactor
   - _Requirements: 23.1, 23.2, 23.3, 23.4, 23.5_
 
-- [ ] 24. Target size validation
-  - [ ] 24.1 Implement `check_target_exceeds_file_size(target_mb, input_path)` in `morphix_core/validation.py`
+- [x] 24. Target size validation
+  - [x] 24.1 Implement `check_target_exceeds_file_size(target_mb, input_path)` in `morphix_core/validation.py`
     - Raises `ValueError` if `target_mb >= os.path.getsize(input_path) / 1_000_000`
     - Must be called before any ffprobe or ffmpeg invocation
     - _Requirements: 21.1, 21.2, 21.3_
-  - [ ] 24.2 Integrate validation into the UI in `morphix_ui/ui_app.py`
+  - [x] 24.2 Integrate validation into the UI in `morphix_ui/ui_app.py`
     - Call `check_target_exceeds_file_size` before starting compression
     - Show `tkinter.messagebox.showerror` and abort if it raises `ValueError`
     - _Requirements: 21.1_
-  - [ ] 24.3 Integrate validation into the CLI in `morphix_core/cli.py`
+  - [x] 24.3 Integrate validation into the CLI in `morphix_core/cli.py`
     - Call `check_target_exceeds_file_size` in `main()` before invoking `run()`
     - Print error to stderr and exit non-zero if it raises `ValueError`
     - _Requirements: 21.2, 21.3_
-  - [ ]* 24.4 Write property test for target size validation (Property 23)
+  - [x]* 24.4 Write property test for target size validation (Property 23)
     - **Property 23: Target size at or above file size raises before ffprobe**
     - **Validates: Requirements 21.1, 21.2, 21.3**
 
-- [ ] 25. Low compression ratio warning
-  - [ ] 25.1 Implement `check_low_compression_ratio(target_mb, input_path)` in `morphix_core/validation.py`
+- [x] 25. Low compression ratio warning
+  - [x] 25.1 Implement `check_low_compression_ratio(target_mb, input_path)` in `morphix_core/validation.py`
     - Returns `True` if `target_mb < 0.03 * (os.path.getsize(input_path) / 1_000_000)`
     - Returns `False` otherwise
     - _Requirements: 22.1, 22.4, 22.5_
-  - [ ] 25.2 Integrate warning into the UI in `morphix_ui/ui_app.py`
+  - [x] 25.2 Integrate warning into the UI in `morphix_ui/ui_app.py`
     - Call `check_low_compression_ratio` after the target size check
     - Show `tkinter.messagebox.askokcancel` warning if it returns `True`
     - Abort if user cancels; proceed if confirmed
     - _Requirements: 22.1, 22.2, 22.3_
-  - [ ] 25.3 Integrate warning into the CLI in `morphix_core/cli.py`
+  - [x] 25.3 Integrate warning into the CLI in `morphix_core/cli.py`
     - Call `check_low_compression_ratio` after the target size check
     - Print warning to stderr and continue if it returns `True`
     - _Requirements: 22.4, 22.5_
-  - [ ]* 25.4 Write property test for low compression ratio warning (Property 24)
+  - [x]* 25.4 Write property test for low compression ratio warning (Property 24)
     - **Property 24: Low-ratio warning triggered if and only if target is below 3% threshold**
     - **Validates: Requirements 22.1, 22.4, 22.5**
 

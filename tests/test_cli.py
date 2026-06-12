@@ -180,6 +180,13 @@ def test_no_console_not_set_does_not_relaunch():
     mock_args.no_console = False
     mock_args.input = "video.mp4"
     mock_args.max_mb = 10.0
+    mock_args.quality = "medium"
+    mock_args.resolution = None
+    mock_args.overwrite = True
+    mock_args.disable_logs = True
+    mock_args.progress = True
+    mock_args.start = None
+    mock_args.end = None
 
     with patch("morphix_core.cli.parse_args", return_value=mock_args), \
          patch("morphix_core.cli.check_target_exceeds_file_size"), \
@@ -189,3 +196,56 @@ def test_no_console_not_set_does_not_relaunch():
         cli_mod.main()
         mock_run.assert_called_once()
         mock_popen.assert_not_called()
+
+
+# ===========================================================================
+# Trim Feature CLI Argument Tests
+# ===========================================================================
+
+
+def test_start_argument_parsed():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--start", "30.5"])
+    assert args.start == 30.5
+
+
+def test_end_argument_parsed():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--end", "60.0"])
+    assert args.end == 60.0
+
+
+def test_both_start_and_end():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--start", "10", "--end", "30"])
+    assert args.start == 10.0
+    assert args.end == 30.0
+
+
+def test_test_flag_does_not_override_explicit_start():
+    args = parse_args_with(["morphix", "--test", "--start", "5"])
+    assert args.input is not None
+    assert args.start == 5.0
+
+
+def test_test_flag_does_not_override_explicit_end():
+    args = parse_args_with(["morphix", "--test", "--end", "120"])
+    assert args.input is not None
+    assert args.end == 120.0
+
+
+def test_start_default_is_none():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10"])
+    assert args.start is None
+
+
+def test_end_default_is_none():
+    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10"])
+    assert args.end is None
+
+
+def test_start_invalid_float_exits():
+    with pytest.raises(SystemExit):
+        parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--start", "abc"])
+
+
+def test_end_invalid_float_exits():
+    with pytest.raises(SystemExit):
+        parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--end", "xyz"])

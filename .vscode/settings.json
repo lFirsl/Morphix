@@ -43,5 +43,6 @@
             "linux": "Default Shell",
             "osx": "Default Shell"
         }
-    }
+    },
+    "kiroAgent.configureMCP": "Disabled"
 }

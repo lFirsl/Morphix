@@ -27,6 +27,7 @@ from morphix_core.settings import read_settings, write_settings  # noqa: F401
 from morphix_core.validation import (  # noqa: F401
     check_target_exceeds_file_size,
     check_low_compression_ratio,
+    check_trim_values,
 )
 
 
@@ -41,6 +42,8 @@ def run(
     disable_logs=True,
     progress=True,
     progress_cb=None,
+    start: float | None = None,
+    end: float | None = None,
 ):
     # Backwards-compatible entry point used by CLI and UI.
     ctx = RunContext(
@@ -54,5 +57,7 @@ def run(
         disable_logs=disable_logs,
         progress=progress,
         progress_cb=progress_cb,
+        start=start,
+        end=end,
     )
     return ctx.execute()

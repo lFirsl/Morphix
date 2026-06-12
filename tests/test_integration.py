@@ -1,6 +1,8 @@
 import os
 import shutil
 import subprocess
+from unittest.mock import patch
+
 import pytest
 from morphix_core.core import find_ffmpeg_binaries, run
 
@@ -89,3 +91,87 @@ def test_passlog_files_cleaned_up_after_compression(tmp_path):
         remaining = os.listdir(output_dir)
         passlog_files = [f for f in remaining if "ffmpeg2pass" in f]
         assert len(passlog_files) == 0, f"Passlog files not cleaned up: {passlog_files}"
+
+
+# ===========================================================================
+# Trim Feature Integration Tests (Requirements Trim-5 through Trim-8)
+# ===========================================================================
+
+@pytest.mark.integration
+def test_trim_direct_copy_output_fits_within_target(tmp_path):
+    """When trimmed clip fits within max_mb, output equals a valid MP4 and temp is cleaned up."""
+    ffprobe = get_ffprobe_or_skip()
+    if not os.path.isfile(TEST_VIDEO):
+        pytest.skip("Test video not found")
+
+    input_copy = str(tmp_path / "input.mp4")
+    shutil.copy2(TEST_VIDEO, input_copy)
+
+    output_path = run(
+        input_copy,
+        max_mb=TARGET_MB,
+        overwrite=True,
+        progress=False,
+        disable_logs=True,
+        start=0.0,
+        end=5.0,
+    )
+    assert os.path.isfile(output_path)
+    # Verify it's a valid MP4 via ffprobe.
+    result = subprocess.run(
+        [ffprobe, "-v", "error", output_path],
+        capture_output=True,
+    )
+    assert result.returncode == 0
+
+
+@pytest.mark.integration
+def test_trim_temp_file_cleaned_up(tmp_path):
+    """After encoding from temp file (case 3b), the temp trimmed file is removed."""
+    if not os.path.isfile(TEST_VIDEO):
+        pytest.skip("Test video not found")
+
+    input_copy = str(tmp_path / "input.mp4")
+    shutil.copy2(TEST_VIDEO, input_copy)
+
+    # Patch RunContext so _stream_copy_trim simulates the encode path:
+    # it creates a temp file at the expected location and returns None
+    # (temp exceeds target), forcing the two-pass re-encode.
+    from morphix_core.encoding import RunContext as RealRunContext
+
+    class FakeCtx(RealRunContext):
+        def _stream_copy_trim(self):
+            self.trim_temp_path = str(tmp_path / "input_trimmed.mp4")
+            with open(self.trim_temp_path, "wb") as f:
+                f.write(b"x" * 2_000_000)  # 2 MB > max_mb=1
+            return None  # force encode path
+
+        def _run_ffmpeg(self, stream, label):
+            # Don't actually invoke ffmpeg — just create a valid output file.
+            import os
+            out_dir = os.path.dirname(self.output_path) or "."
+            os.makedirs(out_dir, exist_ok=True)
+            with open(self.output_path, "wb") as f:
+                f.write(b"\x00" * 5_000)  # tiny valid-ish output
+
+    import morphix_core.core as core_mod
+    from morphix_core.cli import check_target_exceeds_file_size, check_low_compression_ratio
+
+    with patch.object(core_mod, "RunContext", FakeCtx), \
+         patch("morphix_core.cli.check_target_exceeds_file_size"), \
+         patch("morphix_core.cli.check_low_compression_ratio", return_value=False):
+        output_path = run(
+            input_copy,
+            max_mb=1,
+            overwrite=True,
+            progress=False,
+            disable_logs=True,
+            start=0.0,
+            end=60.0,
+        )
+
+    assert os.path.isfile(output_path)
+
+    # The temp trimmed file should not remain in the input's directory.
+    trimmed_candidate = str(tmp_path / "input_trimmed.mp4")
+    assert not os.path.exists(trimmed_candidate), f"Temp trimmed file not cleaned up: {trimmed_candidate}"

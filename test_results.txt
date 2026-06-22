@@ -1,0 +1,272 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.9, pytest-8.4.2, pluggy-1.5.0 -- C:\Users\flori\anaconda3\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'morphix' -> suppress_health_check=(HealthCheck.too_slow,)
+rootdir: C:\Users\flori\source\repos\morphix-prototype
+configfile: pytest.ini
+plugins: anyio-4.10.0, hypothesis-6.151.9
+collecting ... collected 214 items
+
+tests/test_cli.py::test_positional_input_argument PASSED                 [  0%]
+tests/test_cli.py::test_max_mb_float_argument PASSED                     [  0%]
+tests/test_cli.py::test_output_argument PASSED                           [  1%]
+tests/test_cli.py::test_quality_default_is_medium PASSED                 [  1%]
+tests/test_cli.py::test_quality_choices PASSED                           [  2%]
+tests/test_cli.py::test_overwrite_default_is_true PASSED                 [  2%]
+tests/test_cli.py::test_no_overwrite_flag PASSED                         [  3%]
+tests/test_cli.py::test_progress_default_is_true PASSED                  [  3%]
+tests/test_cli.py::test_no_progress_flag PASSED                          [  4%]
+tests/test_cli.py::test_disable_logs_default_is_true PASSED              [  4%]
+tests/test_cli.py::test_enable_logs_flag PASSED                          [  5%]
+tests/test_cli.py::test_no_console_flag PASSED                           [  5%]
+tests/test_cli.py::test_test_flag_sets_default_input PASSED              [  6%]
+tests/test_cli.py::test_test_flag_sets_default_max_mb PASSED             [  6%]
+tests/test_cli.py::test_error_when_input_missing_without_test PASSED     [  7%]
+tests/test_cli.py::test_error_when_max_mb_missing_without_test PASSED    [  7%]
+tests/test_cli.py::test_resolution_argument PASSED                       [  7%]
+tests/test_cli.py::test_quality_invalid_choice_exits PASSED              [  8%]
+tests/test_cli.py::test_overwrite_explicit_flag PASSED                   [  8%]
+tests/test_cli.py::test_progress_explicit_flag PASSED                    [  9%]
+tests/test_cli.py::test_disable_logs_explicit_flag PASSED                [  9%]
+tests/test_cli.py::test_test_flag_does_not_override_explicit_input PASSED [ 10%]
+tests/test_cli.py::test_test_flag_does_not_override_explicit_max_mb PASSED [ 10%]
+tests/test_cli.py::test_no_console_relaunches_subprocess_on_windows PASSED [ 11%]
+tests/test_cli.py::test_no_console_not_set_does_not_relaunch PASSED      [ 11%]
+tests/test_cli.py::test_start_argument_parsed PASSED                     [ 12%]
+tests/test_cli.py::test_end_argument_parsed PASSED                       [ 12%]
+tests/test_cli.py::test_both_start_and_end PASSED                        [ 13%]
+tests/test_cli.py::test_test_flag_does_not_override_explicit_start PASSED [ 13%]
+tests/test_cli.py::test_test_flag_does_not_override_explicit_end PASSED  [ 14%]
+tests/test_cli.py::test_start_default_is_none PASSED                     [ 14%]
+tests/test_cli.py::test_end_default_is_none PASSED                       [ 14%]
+tests/test_cli.py::test_start_invalid_float_exits PASSED                 [ 15%]
+tests/test_cli.py::test_end_invalid_float_exits PASSED                   [ 15%]
+tests/test_core.py::test_suffix_inserted_before_extension PASSED         [ 16%]
+tests/test_core.py::test_suffix_uses_correct_size PASSED                 [ 16%]
+tests/test_core.py::test_suffix_strips_trailing_zeros_for_integer_size PASSED [ 17%]
+tests/test_core.py::test_mp4_fallback_when_no_extension PASSED           [ 17%]
+tests/test_core.py::test_mp4_fallback_preserves_suffix PASSED            [ 18%]
+tests/test_core.py::test_explicit_output_path_unchanged PASSED           [ 18%]
+tests/test_core.py::test_explicit_output_path_different_dir PASSED       [ 19%]
+tests/test_core.py::test_output_in_same_dir_as_input PASSED              [ 19%]
+tests/test_core.py::test_output_in_same_dir_nested PASSED                [ 20%]
+tests/test_core.py::test_clamp_even_already_even PASSED                  [ 20%]
+tests/test_core.py::test_clamp_even_odd_rounds_down PASSED               [ 21%]
+tests/test_core.py::test_clamp_even_float_rounds_to_even PASSED          [ 21%]
+tests/test_core.py::test_no_scaling_when_bpp_meets_low_threshold PASSED  [ 21%]
+tests/test_core.py::test_no_scaling_when_bpp_meets_medium_threshold PASSED [ 22%]
+tests/test_core.py::test_no_scaling_when_bpp_meets_high_threshold PASSED [ 22%]
+tests/test_core.py::test_no_scaling_when_bpp_exceeds_threshold PASSED    [ 23%]
+tests/test_core.py::test_scaling_applied_when_bpp_below_threshold PASSED [ 23%]
+tests/test_core.py::test_scaling_proportional_formula PASSED             [ 24%]
+tests/test_core.py::test_scaling_preserves_aspect_ratio PASSED           [ 24%]
+tests/test_core.py::test_minimum_height_floor_enforced PASSED            [ 25%]
+tests/test_core.py::test_minimum_height_floor_exact_480 PASSED           [ 25%]
+tests/test_core.py::test_scaled_dimensions_are_even PASSED               [ 26%]
+tests/test_core.py::test_scaled_dimensions_are_even_for_odd_source PASSED [ 26%]
+tests/test_core.py::test_returns_none_when_dimensions_too_small PASSED   [ 27%]
+tests/test_core.py::test_bpp_threshold_low_is_0_05 PASSED                [ 27%]
+tests/test_core.py::test_bpp_threshold_medium_is_0_07 PASSED             [ 28%]
+tests/test_core.py::test_bpp_threshold_high_is_0_10 PASSED               [ 28%]
+tests/test_core.py::test_valid_resolution_sets_scale_filter PASSED       [ 28%]
+tests/test_core.py::test_odd_dimensions_are_clamped_to_even PASSED       [ 29%]
+tests/test_core.py::test_odd_width_only_clamped PASSED                   [ 29%]
+tests/test_core.py::test_odd_height_only_clamped PASSED                  [ 30%]
+tests/test_core.py::test_no_x_separator_leaves_scale_filter_none PASSED  [ 30%]
+tests/test_core.py::test_non_numeric_width_leaves_scale_filter_none PASSED [ 31%]
+tests/test_core.py::test_non_numeric_height_leaves_scale_filter_none PASSED [ 31%]
+tests/test_core.py::test_empty_resolution_leaves_scale_filter_none PASSED [ 32%]
+tests/test_core.py::test_dimension_below_2_leaves_scale_filter_none PASSED [ 32%]
+tests/test_core.py::test_zero_dimension_leaves_scale_filter_none PASSED  [ 33%]
+tests/test_core.py::test_negative_dimension_leaves_scale_filter_none PASSED [ 33%]
+tests/test_core.py::test_manual_override_bypasses_auto_scaling PASSED    [ 34%]
+tests/test_core.py::test_manual_override_with_no_probe_data PASSED       [ 34%]
+tests/test_core.py::test_no_resolution_uses_auto_scaling PASSED          [ 35%]
+tests/test_core.py::test_detect_cuda_returns_true_when_nvidia_smi_exits_0_with_output PASSED [ 35%]
+tests/test_core.py::test_detect_cuda_returns_false_when_nvidia_smi_not_on_path PASSED [ 35%]
+tests/test_core.py::test_detect_cuda_returns_false_when_nvidia_smi_exits_nonzero PASSED [ 36%]
+tests/test_core.py::test_detect_cuda_returns_false_when_nvidia_smi_exits_0_but_no_output PASSED [ 36%]
+tests/test_core.py::test_detect_cuda_returns_false_on_oserror PASSED     [ 37%]
+tests/test_core.py::test_detect_device_info_returns_nvidia_when_cuda_detected PASSED [ 37%]
+tests/test_core.py::test_detect_device_info_returns_amd_when_nvidia_fails_amd_succeeds PASSED [ 38%]
+tests/test_core.py::test_detect_device_info_returns_intel_when_nvidia_and_amd_fail PASSED [ 38%]
+tests/test_core.py::test_detect_device_info_returns_cpu_when_all_fail PASSED [ 39%]
+tests/test_core.py::test_detect_device_info_swallows_nvidia_exception_falls_back_to_amd PASSED [ 39%]
+tests/test_core.py::test_detect_device_info_swallows_amd_exception_falls_back_to_intel PASSED [ 40%]
+tests/test_core.py::test_detect_device_info_swallows_intel_exception_falls_back_to_cpu PASSED [ 40%]
+tests/test_core.py::test_detect_device_info_swallows_all_exceptions_returns_cpu PASSED [ 41%]
+tests/test_core.py::test_get_available_devices_always_ends_with_cpu PASSED [ 41%]
+tests/test_core.py::test_get_available_devices_ends_with_cpu_when_nvidia_present PASSED [ 42%]
+tests/test_core.py::test_get_available_devices_gpu_first_cpu_last PASSED [ 42%]
+tests/test_core.py::test_get_available_devices_only_cpu_when_no_gpu PASSED [ 42%]
+tests/test_core.py::test_get_available_devices_swallows_exceptions_still_ends_with_cpu PASSED [ 43%]
+tests/test_core.py::test_resolve_device_info_cpu_preference_returns_cpu PASSED [ 43%]
+tests/test_core.py::test_resolve_device_info_nvidia_available_returns_nvidia PASSED [ 44%]
+tests/test_core.py::test_resolve_device_info_nvidia_unavailable_falls_back_to_cpu PASSED [ 44%]
+tests/test_core.py::test_resolve_device_info_amd_available_returns_amd PASSED [ 45%]
+tests/test_core.py::test_resolve_device_info_amd_unavailable_falls_back_to_cpu PASSED [ 45%]
+tests/test_core.py::test_resolve_device_info_intel_available_returns_intel PASSED [ 46%]
+tests/test_core.py::test_resolve_device_info_intel_unavailable_falls_back_to_cpu PASSED [ 46%]
+tests/test_core.py::test_resolve_device_info_unknown_key_uses_auto_detection PASSED [ 47%]
+tests/test_core.py::test_resolve_device_info_nvidia_exception_falls_back_to_cpu PASSED [ 47%]
+tests/test_core.py::test_find_ffmpeg_binaries_returns_bundled_when_meipass_has_both PASSED [ 48%]
+tests/test_core.py::test_find_ffmpeg_binaries_skips_candidate_missing_ffprobe PASSED [ 48%]
+tests/test_core.py::test_find_ffmpeg_binaries_skips_candidate_missing_ffmpeg PASSED [ 49%]
+tests/test_core.py::test_find_ffmpeg_binaries_falls_back_to_path_when_no_candidate_has_both PASSED [ 49%]
+tests/test_core.py::test_find_ffmpeg_binaries_returns_missing_when_no_binaries_anywhere PASSED [ 50%]
+tests/test_core.py::test_find_ffmpeg_binaries_meipass_checked_first PASSED [ 50%]
+tests/test_core.py::test_find_ffmpeg_binaries_no_meipass_uses_exe_dir PASSED [ 50%]
+tests/test_core.py::test_iter_progress_seconds_parses_out_time_ms PASSED [ 51%]
+tests/test_core.py::test_iter_progress_seconds_yields_none_for_non_matching_lines PASSED [ 51%]
+tests/test_core.py::test_iter_progress_seconds_handles_multiple_lines PASSED [ 52%]
+tests/test_core.py::test_iter_progress_seconds_zero_value PASSED         [ 52%]
+tests/test_core.py::test_render_progress_computes_correct_percentage PASSED [ 53%]
+tests/test_core.py::test_render_progress_100_percent_at_end PASSED       [ 53%]
+tests/test_core.py::test_render_progress_clamps_above_100 PASSED         [ 54%]
+tests/test_core.py::test_progress_cb_called_with_pass1_label PASSED      [ 54%]
+tests/test_core.py::test_progress_cb_called_with_pass2_label PASSED      [ 55%]
+tests/test_core.py::test_stdout_fallback_when_progress_cb_is_none PASSED [ 55%]
+tests/test_core.py::test_stdout_fallback_not_called_when_progress_cb_set PASSED [ 56%]
+tests/test_core.py::test_run_ffmpeg_simple_used_when_progress_disabled PASSED [ 56%]
+tests/test_core.py::test_run_ffmpeg_with_progress_used_when_progress_enabled PASSED [ 57%]
+tests/test_core.py::test_prepare_logs_creates_output_subdir PASSED       [ 57%]
+tests/test_core.py::test_prepare_logs_passlog_path_under_output PASSED   [ 57%]
+tests/test_core.py::test_cleanup_logs_deletes_log_file PASSED            [ 58%]
+tests/test_core.py::test_cleanup_logs_deletes_mbtree_file PASSED         [ 58%]
+tests/test_core.py::test_cleanup_logs_removes_output_dir_when_empty PASSED [ 59%]
+tests/test_core.py::test_cleanup_logs_silently_skips_missing_passlog_files PASSED [ 59%]
+tests/test_core.py::test_cleanup_logs_does_not_remove_output_dir_when_not_empty PASSED [ 60%]
+tests/test_core.py::test_write_ffmpeg_error_writes_stderr_bytes PASSED   [ 60%]
+tests/test_core.py::test_write_ffmpeg_error_fallback_when_stderr_is_none PASSED [ 61%]
+tests/test_core.py::test_write_ffmpeg_error_fallback_when_stderr_is_empty_bytes PASSED [ 61%]
+tests/test_core.py::test_write_ffmpeg_error_prints_log_path_to_stdout PASSED [ 62%]
+tests/test_core.py::test_run_ffmpeg_reraises_after_writing_error_log PASSED [ 62%]
+tests/test_core.py::test_popen_no_window_kwargs_returns_create_no_window_on_nt PASSED [ 63%]
+tests/test_core.py::test_popen_no_window_kwargs_returns_start_new_session_on_posix PASSED [ 63%]
+tests/test_core.py::test_popen_no_window_kwargs_returns_start_new_session_on_non_nt PASSED [ 64%]
+tests/test_core.py::test_popen_no_window_kwargs_create_no_window_value_is_correct PASSED [ 64%]
+tests/test_core.py::test_trim_disabled_when_no_start PASSED              [ 64%]
+tests/test_core.py::test_trim_disabled_when_no_end PASSED                [ 65%]
+tests/test_core.py::test_trim_enabled_with_both_values PASSED            [ 65%]
+tests/test_core.py::test_stream_copy_trim_disabled_when_no_start PASSED  [ 66%]
+tests/test_core.py::test_stream_copy_trim_disabled_when_no_end PASSED    [ 66%]
+tests/test_core.py::test_stream_copy_trim_sets_work_path_and_temp_path FAILED [ 67%]
+tests/test_core.py::test_stream_copy_trim_fits_returns_output_path FAILED [ 67%]
+tests/test_core.py::test_probe_media_uses_trim_duration_for_bitrate FAILED [ 68%]
+tests/test_core.py::test_work_path_defaults_to_input_when_no_trim PASSED [ 68%]
+tests/test_integration.py::test_output_file_created_at_expected_path PASSED [ 69%]
+tests/test_integration.py::test_output_file_size_within_10_percent_of_target PASSED [ 69%]
+tests/test_integration.py::test_output_file_is_valid_mp4 PASSED          [ 70%]
+tests/test_integration.py::test_passlog_files_cleaned_up_after_compression PASSED [ 70%]
+tests/test_integration.py::test_trim_direct_copy_output_fits_within_target PASSED [ 71%]
+tests/test_integration.py::test_trim_temp_file_cleaned_up FAILED         [ 71%]
+tests/test_properties.py::test_prop1_bitrate_formula_and_minimum_clamp PASSED [ 71%]
+tests/test_properties.py::test_prop2_output_path_derivation PASSED       [ 72%]
+tests/test_properties.py::test_prop2_output_path_no_extension_uses_mp4 PASSED [ 72%]
+tests/test_properties.py::test_prop3_explicit_output_path_preserved PASSED [ 73%]
+tests/test_properties.py::test_prop4_no_scaling_when_bpp_sufficient PASSED [ 73%]
+tests/test_properties.py::test_prop5_scaled_resolution_satisfies_target_bpp PASSED [ 74%]
+tests/test_properties.py::test_prop6_minimum_height_floor_enforced PASSED [ 74%]
+tests/test_properties.py::test_prop7_clamp_even_always_even PASSED       [ 75%]
+tests/test_properties.py::test_prop7_scaled_dimensions_are_even PASSED   [ 75%]
+tests/test_properties.py::test_prop8_manual_resolution_override_applied PASSED [ 76%]
+tests/test_properties.py::test_prop9_invalid_resolution_no_scale_filter PASSED [ 76%]
+tests/test_properties.py::test_prop10_gpu_detection_exceptions_swallowed PASSED [ 77%]
+tests/test_properties.py::test_prop19_cpu_always_in_device_list PASSED   [ 77%]
+tests/test_properties.py::test_prop20_resolve_device_info_fallback_to_cpu PASSED [ 78%]
+tests/test_properties.py::test_prop11_binary_resolution_first_valid_candidate PASSED [ 78%]
+tests/test_properties.py::test_prop12_progress_parsing_direct PASSED     [ 78%]
+tests/test_properties.py::test_prop13_passlog_path_under_output_subdir PASSED [ 79%]
+tests/test_properties.py::test_prop14_empty_output_dir_removed_after_cleanup PASSED [ 79%]
+tests/test_properties.py::test_prop15_ffmpeg_error_log_with_stderr PASSED [ 80%]
+tests/test_properties.py::test_prop15_ffmpeg_error_log_no_stderr PASSED  [ 80%]
+tests/test_properties.py::test_prop16_ffmpeg_exception_reraised_after_logging PASSED [ 81%]
+tests/test_properties.py::test_prop17_subprocess_flags_windows PASSED    [ 81%]
+tests/test_properties.py::test_prop17_subprocess_flags_non_windows PASSED [ 82%]
+tests/test_properties.py::test_prop18_gb_to_mb_conversion PASSED         [ 82%]
+tests/test_properties.py::test_prop21_settings_round_trip PASSED         [ 83%]
+tests/test_properties.py::test_prop22_settings_fallback_missing_file PASSED [ 83%]
+tests/test_properties.py::test_prop22_settings_fallback_invalid_json PASSED [ 84%]
+tests/test_properties.py::test_prop22_settings_fallback_bad_default_mb PASSED [ 84%]
+tests/test_properties.py::test_prop22_settings_fallback_missing_key PASSED [ 85%]
+tests/test_properties.py::test_prop23_target_exceeds_file_size_raises PASSED [ 85%]
+tests/test_properties.py::test_prop24_low_ratio_warning_threshold PASSED [ 85%]
+tests/test_ui.py::TestMorphixUIDefaults::test_target_size_default_is_20 FAILED [ 86%]
+tests/test_ui.py::TestMorphixUIDefaults::test_unit_selector_defaults_to_mb FAILED [ 86%]
+tests/test_ui.py::TestMorphixUIValidation::test_error_dialog_when_input_file_missing FAILED [ 87%]
+tests/test_ui.py::TestMorphixUIValidation::test_error_dialog_when_target_size_missing FAILED [ 87%]
+tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_from_input_with_no_extension FAILED [ 88%]
+tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_on_startup_with_input_file FAILED [ 88%]
+tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_preserves_extension FAILED [ 89%]
+tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_with_morphix_compressed_suffix FAILED [ 89%]
+tests/test_ui.py::TestMorphixUIControlState::test_controls_disabled_during_compression_and_reenabled_on_completion FAILED [ 90%]
+tests/test_ui.py::TestMorphixUIControlState::test_controls_reenabled_on_error FAILED [ 90%]
+tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_exist FAILED [ 91%]
+tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_hidden_by_default FAILED [ 91%]
+tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_hidden_when_unchecked FAILED [ 92%]
+tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_visible_when_checked FAILED [ 92%]
+tests/test_ui.py::TestMorphixUITrimControls::test_trim_checkbox_exists_and_unchecked FAILED [ 92%]
+tests/test_ui.py::TestMorphixUITrimHelpers::test_format_time FAILED      [ 93%]
+tests/test_ui.py::TestMorphixUITrimHelpers::test_parse_time_hhmmss FAILED [ 93%]
+tests/test_ui.py::TestMorphixUITrimHelpers::test_parse_time_mmss FAILED  [ 94%]
+tests/test_validation.py::TestCheckTrimValues::test_no_trimming_requested_is_valid PASSED [ 94%]
+tests/test_validation.py::TestCheckTrimValues::test_only_start_without_end_returns_error PASSED [ 95%]
+tests/test_validation.py::TestCheckTrimValues::test_only_end_without_start_returns_error PASSED [ 95%]
+tests/test_validation.py::TestCheckTrimValues::test_negative_start_returns_error PASSED [ 96%]
+tests/test_validation.py::TestCheckTrimValues::test_negative_end_returns_error PASSED [ 96%]
+tests/test_validation.py::TestCheckTrimValues::test_end_equals_start_returns_error PASSED [ 97%]
+tests/test_validation.py::TestCheckTrimValues::test_duration_exceeds_video_returns_error PASSED [ 97%]
+tests/test_validation.py::TestCheckTrimValues::test_start_plus_duration_exceeds_returns_error PASSED [ 98%]
+tests/test_validation.py::TestCheckTrimValues::test_valid_range_within_duration PASSED [ 98%]
+tests/test_validation.py::TestCheckTrimValues::test_zero_start_and_full_duration PASSED [ 99%]
+tests/test_validation.py::TestCheckTrimValues::test_zero_start_zero_end_returns_error PASSED [ 99%]
+tests/test_validation.py::TestCheckTrimValues::test_exact_duration_boundary_is_valid PASSED [100%]
+
+================================== FAILURES ===================================
+C:\Users\flori\source\repos\morphix-prototype\morphix_core\encoding.py:189: ValueError: not enough values to unpack (expected 2, got 0)
+C:\Users\flori\source\repos\morphix-prototype\morphix_core\encoding.py:189: ValueError: not enough values to unpack (expected 2, got 0)
+C:\Users\flori\source\repos\morphix-prototype\tests\test_core.py:1352: NameError: name 'target_kbps_for_size_mb' is not defined
+C:\Users\flori\source\repos\morphix-prototype\morphix_core\encoding.py:346: ffmpeg._run.Error: ffmpeg error (see stderr output for detail)
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+C:\Users\flori\source\repos\morphix-prototype\morphix_ui\ui_app.py:129: AttributeError: module 'tkinter' has no attribute 'Checkbutton'
+=========================== short test summary info ===========================
+FAILED tests/test_core.py::test_stream_copy_trim_sets_work_path_and_temp_path
+FAILED tests/test_core.py::test_stream_copy_trim_fits_returns_output_path - V...
+FAILED tests/test_core.py::test_probe_media_uses_trim_duration_for_bitrate - ...
+FAILED tests/test_integration.py::test_trim_temp_file_cleaned_up - ffmpeg._ru...
+FAILED tests/test_ui.py::TestMorphixUIDefaults::test_target_size_default_is_20
+FAILED tests/test_ui.py::TestMorphixUIDefaults::test_unit_selector_defaults_to_mb
+FAILED tests/test_ui.py::TestMorphixUIValidation::test_error_dialog_when_input_file_missing
+FAILED tests/test_ui.py::TestMorphixUIValidation::test_error_dialog_when_target_size_missing
+FAILED tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_from_input_with_no_extension
+FAILED tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_on_startup_with_input_file
+FAILED tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_preserves_extension
+FAILED tests/test_ui.py::TestMorphixUIOutputAutoPopulate::test_output_auto_populated_with_morphix_compressed_suffix
+FAILED tests/test_ui.py::TestMorphixUIControlState::test_controls_disabled_during_compression_and_reenabled_on_completion
+FAILED tests/test_ui.py::TestMorphixUIControlState::test_controls_reenabled_on_error
+FAILED tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_exist
+FAILED tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_hidden_by_default
+FAILED tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_hidden_when_unchecked
+FAILED tests/test_ui.py::TestMorphixUITrimControls::test_time_entries_visible_when_checked
+FAILED tests/test_ui.py::TestMorphixUITrimControls::test_trim_checkbox_exists_and_unchecked
+FAILED tests/test_ui.py::TestMorphixUITrimHelpers::test_format_time - Attribu...
+FAILED tests/test_ui.py::TestMorphixUITrimHelpers::test_parse_time_hhmmss - A...
+FAILED tests/test_ui.py::TestMorphixUITrimHelpers::test_parse_time_mmss - Att...
+======================= 22 failed, 192 passed in 38.66s =======================
+

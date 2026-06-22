@@ -58,8 +58,8 @@ class MorphixUI(tk.Tk):
 
         # --- Trim state ---
         self.trim_enabled_var = tk.BooleanVar(value=False)
-        self.trim_start_var = tk.StringVar(value="0:00")
-        self.trim_end_var = tk.StringVar(value="")
+        self.trim_start_var = tk.StringVar(value="00:00:00")
+        self.trim_end_var = tk.StringVar(value="00:00:00")
         self.trim_duration_seconds = 0.0  # From video probe.
 
         self.output_var.trace_add("write", self._on_output_change)
@@ -148,7 +148,7 @@ class MorphixUI(tk.Tk):
             row=0, column=0, sticky="w", padx=(15, 4), pady=2
         )
         self.trim_start_entry = tk.Entry(
-            self.trim_frame, textvariable=self.trim_start_var, width=8
+            self.trim_frame, textvariable=self.trim_start_var, width=12
         )
         self.trim_start_entry.grid(row=0, column=1, sticky="w", pady=2)
 
@@ -156,7 +156,7 @@ class MorphixUI(tk.Tk):
             row=0, column=2, padx=(15, 4), pady=2
         )
         self.trim_end_entry = tk.Entry(
-            self.trim_frame, textvariable=self.trim_end_var, width=8
+            self.trim_frame, textvariable=self.trim_end_var, width=12
         )
         self.trim_end_entry.grid(row=0, column=3, sticky="w", pady=2)
 
@@ -202,11 +202,11 @@ class MorphixUI(tk.Tk):
 
     @staticmethod
     def _format_time(seconds: float) -> str:
-        """Format seconds as HH:MM:SS."""
+        """Format seconds as HH:MM:SS with zero-padded hours."""
         h = int(seconds) // 3600
         m = (int(seconds) % 3600) // 60
         s = int(seconds) % 60
-        return f"{h}:{m:02d}:{s:02d}"
+        return f"{h:02d}:{m:02d}:{s:02d}"
 
     def _build_compress_button(self, padding):
         """Row 4: compress action button and settings button."""
@@ -342,17 +342,6 @@ class MorphixUI(tk.Tk):
             messagebox.showerror("Morphix", str(exc))
             return
 
-        if check_low_compression_ratio(size_value, input_path):
-            proceed = messagebox.askokcancel(
-                "Morphix — High Compression Warning",
-                "The target size is less than 3% of the original file size. "
-                "The output will very likely look poor.\n\n"
-                "For a viewable result, consider a target of at least 5% of the original file size.\n\n"
-                "Do you want to continue anyway?",
-            )
-            if not proceed:
-                return
-
         # --- Trim validation ---
         trim_start = None
         trim_end = None
@@ -367,6 +356,40 @@ class MorphixUI(tk.Tk):
             if not ok:
                 self.after(0, lambda: messagebox.showerror("Morphix", msg))
                 return
+
+        # --- Low compression ratio warning ---
+        # When trimming is active AND we have video duration from probe, check against
+        # the estimated trimmed segment size instead of the full file. Otherwise use
+        # original behavior (full-file comparison).
+        trim_enabled = self.trim_enabled_var.get()
+        if not trim_enabled or self.trim_duration_seconds <= 0 or trim_start is None or trim_end is None:
+            # No trim, or no probe data — compare target against original file.
+            if check_low_compression_ratio(size_value, input_path):
+                proceed = messagebox.askokcancel(
+                    "Morphix — High Compression Warning",
+                    "The target size is less than 5% of the original file size. "
+                    "The output will very likely look poor.\n\n"
+                    "Consider using a larger target for a viewable result.\n\n"
+                    "Do you want to continue anyway?",
+                )
+                if not proceed:
+                    return
+        else:
+            # Trimming is active and we have valid data — use estimated trimmed size.
+            orig_file_mb = os.path.getsize(input_path) / 1_000_000
+            trim_ratio = (trim_end - trim_start) / self.trim_duration_seconds
+            est_trimmed_mb = orig_file_mb * trim_ratio
+            if size_value < 0.05 * est_trimmed_mb:
+                proceed = messagebox.askokcancel(
+                    "Morphix — High Compression Warning",
+                    f"Your trimmed clip is estimated to be about {est_trimmed_mb:.1f} MB.\n\n"
+                    f"The target size ({size_value:.1f} MB) is less than 5% of the "
+                    f"estimated trimmed clip size. The output will very likely look poor.\n\n"
+                    f"Consider using a target of at least {est_trimmed_mb * 0.05:.1f} MB.\n\n"
+                    "Do you want to continue anyway?",
+                )
+                if not proceed:
+                    return
 
         self._is_running = True
         self._set_controls_enabled(False)

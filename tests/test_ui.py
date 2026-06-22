@@ -407,10 +407,10 @@ class TestMorphixUITrimHelpers(unittest.TestCase):
         assert self.app._parse_time("0:00:00") == 0.0
 
     def test_format_time(self):
-        # _format_time is HH:MM:SS
-        assert self.app._format_time(0) == "0:00:00"
-        assert self.app._format_time(90) == "0:01:30"
-        assert self.app._format_time(3661) == "1:01:01"
+        # _format_time is zero-padded HH:MM:SS
+        assert self.app._format_time(0) == "00:00:00"
+        assert self.app._format_time(90) == "00:01:30"
+        assert self.app._format_time(3661) == "01:01:01"
 
 
 if __name__ == "__main__":

@@ -42,10 +42,7 @@ class RunContext:
         self.trim_start = start
         self.trim_end = end
         self.trim_duration = (end - start) if (start is not None and end is not None) else 0.0
-        self.work_path: str | None = None       # Points at original or temp trimmed file.
-        self.trimming = False                    # True when trim is active.
-        self.trim_temp_path: str | None = None   # Path to temp trimmed file, cleaned up at end.
-        self._trim_kwargs = {}                   # ss/t kwargs merged into input_kwargs.
+        self.trimming = start is not None and end is not None
 
         # Derived values populated during execution.
         self.input_dir = os.path.dirname(self.input_path)
@@ -67,31 +64,25 @@ class RunContext:
         self._resolve_output_path()
         print(f"Proceeding with a compression down to a size of {self.max_mb}mb")
 
-        # Probe the original for duration and metadata.
-        self._probe_media()
-
-        # Trim pre-phase (if active): stream-copy to temp, measure, decide path.
-        trim_result = self._stream_copy_trim()
-        if trim_result is not None:
-            # Case 3a: temp file fits within target — use directly.
-            print(f"Trimmed clip ({self.trim_duration:.1f}s) fits within {self.max_mb}MB target.")
-            return trim_result
-
-        # Cases 3b + normal (no trim): two-pass encode path.
-        if self.work_path is None:
-            self.work_path = self.input_path  # Normal case: use original.
-
-        # Re-probe the working file for stream metadata (may be temp file).
         self._probe_media()
         self._configure_hwaccel()
-        # Merge trim ss/t into input_kwargs if trimming is active.
-        if self.trimming and self._trim_kwargs:
-            self.input_kwargs = {**self.input_kwargs, **self._trim_kwargs}
+
+        # Merge trim -ss/-t into input_kwargs when trimming is active.
+        if self.trimming:
+            self.input_kwargs = {**self.input_kwargs, "ss": str(self.trim_start), "t": str(self.trim_duration)}
+
         self._compute_scaling()
+
+        # If the estimated segment already fits within max_mb, use a single-pass
+        # CRF encode (quality-preserving, no bitrate target).
+        if self.trimming and self._estimated_segment_mb() <= self.max_mb:
+            print(f"Trimmed segment (~{self._estimated_segment_mb():.1f}MB) fits within {self.max_mb}MB — using CRF encode.")
+            return self._run_crf_encode()
+
         self._prepare_logs()
 
-        # Pass 1: analysis (video only) on work_path.
-        pass1_input = ffmpeg.input(self.work_path, **self.input_kwargs)
+        # Pass 1: analysis (video only).
+        pass1_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         pass1_video = pass1_input.video
         if self.scale_filter:
             pass1_video = pass1_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
@@ -109,8 +100,8 @@ class RunContext:
             "PASS1",
         )
 
-        # Pass 2: actual encode on work_path.
-        pass2_input = ffmpeg.input(self.work_path, **self.input_kwargs)
+        # Pass 2: actual encode.
+        pass2_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         pass2_video = pass2_input.video
         if self.scale_filter:
             pass2_video = pass2_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
@@ -141,68 +132,34 @@ class RunContext:
             )
         self._run_ffmpeg(pass2_stream, "PASS2")
 
-        # Clean up temp file if still present (case 3b path).
-        if self.trim_temp_path and os.path.isfile(self.trim_temp_path):
-            os.remove(self.trim_temp_path)
-            self.trim_temp_path = None
-
         self._cleanup_logs()
         return self.output_path
 
-    def _stream_copy_trim(self) -> str | None:
-        """Stream-copy a trimmed segment to a temp file.
+    def _estimated_segment_mb(self) -> float:
+        """Estimate the size of the trim segment based on the source bitrate."""
+        total_bitrate = int(self.probe["format"].get("bit_rate", 0))
+        return (total_bitrate * self.trim_duration) / 8 / 1_000_000
 
-        Returns the final output_path if the temp file fits within max_mb (case 3a).
-        Sets self.work_path / self.trim_temp_path when encoding is needed (case 3b).
-        Returns None when trimming is not active.
-        """
-        if not (self.trim_start is not None and self.trim_end is not None):
-            return None
-
-        self.trimming = True
-        self._trim_kwargs = {"ss": str(self.trim_start), "t": str(self.trim_duration)}
-
-        # Temp file in the same directory as the original input.
-        base_name, _ = os.path.splitext(os.path.basename(self.input_path))
-        self.trim_temp_path = os.path.join(self.input_dir, f"{base_name}_trimmed.mp4")
-
-        if not self.ffmpeg_path or not os.path.isfile(self.ffmpeg_path):
-            raise FileNotFoundError(f"ffmpeg not found at {self.ffmpeg_path}")
-
-        cmd = [
-            self.ffmpeg_path,
-            "-ss", str(self.trim_start),
-            "-i", self.input_path,
-            "-c:v", "copy",
-            "-c:a", "copy",
-            "-t", str(self.trim_duration),
-            "-f", "mp4",
-            self.trim_temp_path,
-        ]
-
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            **popen_no_window_kwargs(),
-        )
-        _, stderr = process.communicate()
-        if process.returncode != 0:
-            raise RuntimeError(f"Stream-copy trim failed: {stderr.decode(errors='replace')}")
-
-        # Measure real output size against target.
-        temp_size_mb = os.path.getsize(self.trim_temp_path) / 1_000_000.0
-        if temp_size_mb <= self.max_mb:
-            # Case 3a: fits — copy to output and remove temp.
-            import shutil
-            shutil.copy2(self.trim_temp_path, self.output_path)
-            os.remove(self.trim_temp_path)
-            self.trim_temp_path = None
-            return self.output_path
-
-        # Case 3b: does not fit — encode from the temp file.
-        self.work_path = self.trim_temp_path
-        return None
+    def _run_crf_encode(self) -> str:
+        """Single-pass CRF encode — preserves quality without a bitrate target."""
+        crf_input = ffmpeg.input(self.input_path, **self.input_kwargs)
+        crf_video = crf_input.video
+        if self.scale_filter:
+            crf_video = crf_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+        if self.has_audio:
+            crf_audio = crf_input.audio
+            crf_stream = ffmpeg.output(
+                crf_video, crf_audio, self.output_path,
+                vcodec="libx264", preset="medium", crf=18,
+                acodec="aac", audio_bitrate="128k",
+            )
+        else:
+            crf_stream = ffmpeg.output(
+                crf_video, self.output_path,
+                vcodec="libx264", preset="medium", crf=18, an=None,
+            )
+        self._run_ffmpeg(crf_stream, "CRF")
+        return self.output_path
 
     def _resolve_output_path(self):
         # Default output path: original filename + "_{size}mb".
@@ -225,11 +182,10 @@ class RunContext:
     def _probe_media(self):
         # Use ffprobe to fetch duration and stream metadata without spawning a console.
         self.probe = ffprobe_media(self.input_path, self.ffprobe_path)
-        self.duration = float(self.probe["format"]["duration"])
-        # When trimming is active, use the trimmed duration for bitrate calculation
-        # since we are encoding only that segment, not the full video.
-        duration_for_bitrate = self.trim_duration if self.trimming else self.duration
-        self.video_kbps = target_kbps_for_size_mb(self.max_mb, duration_for_bitrate, audio_kbps=128)
+        full_duration = float(self.probe["format"]["duration"])
+        # Use trim duration for bitrate calc and progress when trimming.
+        self.duration = self.trim_duration if self.trimming else full_duration
+        self.video_kbps = target_kbps_for_size_mb(self.max_mb, self.duration, audio_kbps=128)
         self.video_bps = self.video_kbps * 1000
         self.has_audio = any(
             stream.get("codec_type") == "audio" for stream in self.probe.get("streams", [])

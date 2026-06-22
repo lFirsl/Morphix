@@ -1256,122 +1256,43 @@ def test_trim_disabled_when_no_end():
 def test_trim_enabled_with_both_values():
     """Trimming is active when both start and end are provided."""
     ctx = make_ctx("/fake/video.mp4", start=10.0, end=60.0)
-    assert ctx.trimming is False  # Not yet — set in execute() / _stream_copy_trim().
+    assert ctx.trimming is True
     assert ctx.trim_duration == 50.0
 
 
-def test_stream_copy_trim_disabled_when_no_start():
-    """_stream_copy_trim returns None when start is not set."""
+def test_trimming_disabled_when_no_start():
+    """Trimming is inactive when start is not set."""
     ctx = make_ctx("/fake/video.mp4", max_mb=15, start=None, end=50.0)
-    result = ctx._stream_copy_trim()
-    assert result is None
     assert ctx.trimming is False
 
 
-def test_stream_copy_trim_disabled_when_no_end():
-    """_stream_copy_trim returns None when end is not set."""
+def test_trimming_disabled_when_no_end():
+    """Trimming is inactive when end is not set."""
     ctx = make_ctx("/fake/video.mp4", max_mb=15, start=10.0, end=None)
-    result = ctx._stream_copy_trim()
-    assert result is None
     assert ctx.trimming is False
 
 
-def test_stream_copy_trim_sets_work_path_and_temp_path(tmp_path):
-    """When trim temp exceeds target, work_path points at trimmed file."""
-    input_file = str(tmp_path / "video.mp4")
-    with open(input_file, "wb") as f:
-        f.write(b"x" * 20_000_000)  # 20 MB fake video
-
-    ffmpeg_bin = os.path.join(str(tmp_path), "ffmpeg_exe", "ffmpeg.exe")
-    os.makedirs(os.path.dirname(ffmpeg_bin), exist_ok=True)
-    with open(ffmpeg_bin, "wb") as f:
-        f.write(b"x" * 1000)  # minimal file
-
-    ctx = RunContext(str(input_file), max_mb=15, start=10.0, end=60.0)
-    ctx.ffprobe_path = ffmpeg_bin.replace("ffmpeg.exe", "ffprobe.exe")
-    os.makedirs(os.path.dirname(ctx.ffprobe_path), exist_ok=True)
-    with open(ctx.ffprobe_path, "wb") as f:
-        f.write(b"x" * 1000)
-
-    # Create the temp trimmed file that ffmpeg would produce.
-    # Size = 18 MB → exceeds max_mb=15 → encode path (does not fit).
-    ctx.trim_temp_path = os.path.join(str(tmp_path), "video_trimmed.mp4")
-    with open(ctx.trim_temp_path, "wb") as f:
-        f.write(b"x" * 18_000_000)
-
-    # Mock output path directory so shutil.copy2 can write there.
-    ctx.output_path = os.path.join(str(tmp_path), "output.mp4")
-
-    with patch("morphix_core.encoding.popen_no_window_kwargs", return_value={}):
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.communicate.return_value = (b"", b"")
-        with patch("morphix_core.encoding.subprocess.Popen", return_value=mock_process):
-            result = ctx._stream_copy_trim()
-
-    assert result is None  # does not fit (18 MB > 15 MB)
-    assert ctx.trimming is True
-    assert ctx.work_path == ctx.trim_temp_path
-    assert os.path.basename(ctx.trim_temp_path) == "video_trimmed.mp4"
-
-
-def test_stream_copy_trim_fits_returns_output_path(tmp_path):
-    """When trim temp fits target, it is copied to output and temp removed."""
-    input_file = str(tmp_path / "small_video.mp4")
-    with open(input_file, "wb") as f:
-        f.write(b"x" * 10_000_000)  # 10 MB
-
-    ffmpeg_bin = os.path.join(str(tmp_path), "ffmpeg_exe2", "ffmpeg.exe")
-    os.makedirs(os.path.dirname(ffmpeg_bin), exist_ok=True)
-    with open(ffmpeg_bin, "wb") as f:
-        f.write(b"x" * 1000)
-
-    ctx = RunContext(str(input_file), max_mb=15, start=0.0, end=30.0)
-    ctx.ffprobe_path = ffmpeg_bin.replace("ffmpeg.exe", "ffprobe.exe")
-    os.makedirs(os.path.dirname(ctx.ffprobe_path), exist_ok=True)
-    with open(ctx.ffprobe_path, "wb") as f:
-        f.write(b"x" * 1000)
-
-    # Create the temp trimmed file that ffmpeg would produce.
-    # Size = 10 MB → fits within max_mb=15 → direct-copy path.
-    ctx.trim_temp_path = os.path.join(str(tmp_path), "small_video_trimmed.mp4")
-    with open(ctx.trim_temp_path, "wb") as f:
-        f.write(b"x" * 10_000_000)
-
-    # Ensure output directory exists.
-    ctx.output_path = os.path.join(str(tmp_path), "output.mp4")
-
-    with patch("morphix_core.encoding.popen_no_window_kwargs", return_value={}):
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.communicate.return_value = (b"", b"")
-        with patch("morphix_core.encoding.subprocess.Popen", return_value=mock_process):
-            result = ctx._stream_copy_trim()
-
-    assert result == ctx.output_path
-    assert ctx.trim_temp_path is None  # cleaned up after copy
+def test_estimated_segment_mb():
+    """_estimated_segment_mb uses source bitrate * trim_duration."""
+    ctx = make_ctx("/fake/video.mp4", max_mb=15, start=10.0, end=30.0)
+    ctx.probe = {
+        "format": {"duration": "120.0", "bit_rate": "8000000"},  # 8 Mbps
+        "streams": [{"codec_type": "video"}],
+    }
+    # 8_000_000 bps * 20s / 8 / 1_000_000 = 20 MB
+    assert ctx._estimated_segment_mb() == 20.0
 
 
 def test_probe_media_uses_trim_duration_for_bitrate():
     """Bitrate calculation uses trimmed duration when trimming is active."""
     with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
-        ctx = RunContext("/fake/video.mp4", max_mb=15)
+        ctx = RunContext("/fake/video.mp4", max_mb=15, start=10.0, end=60.0)
 
     ctx.probe = {
-        "format": {"duration": "300.0"},  # Full video is 300s
+        "format": {"duration": "300.0"},
         "streams": [{"codec_type": "video"}],
     }
-    ctx.duration = 300.0
-    ctx.trimming = True
-    ctx.trim_duration = 50.0
 
-    # Manually run the bitrate calc portion of _probe_media.
-    duration_for_bitrate = ctx.trim_duration if ctx.trimming else ctx.duration
-
-    assert duration_for_bitrate == 50.0  # Should use trim, not 300
-
-
-def test_work_path_defaults_to_input_when_no_trim():
-    """When trimming is inactive, work_path remains None (execute() defaults to input_path)."""
-    ctx = make_ctx("/fake/video.mp4")
-    assert ctx.work_path is None
+    # trimming is True, trim_duration is 50.0
+    assert ctx.trimming is True
+    assert ctx.trim_duration == 50.0

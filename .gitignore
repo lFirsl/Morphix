@@ -13,12 +13,12 @@ __pycache__/
 *.pyc
 build/
 dist/
-*.spec
 
 # Runtime/output logs
 .output/
 ffmpeg2pass-*.log
 ffmpeg2pass-*.log.mbtree
+test_results.txt
 
 # MSIX artifacts
 *.msix

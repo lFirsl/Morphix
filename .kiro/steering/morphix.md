@@ -44,11 +44,11 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 ## Build & Packaging
 
 - All builds run from the `morphix` conda environment (`conda run -n morphix ...`).
-- CLI EXE: `PyInstaller --onefile -n Morphix_CLI` with hidden imports and bundled ffmpeg binaries.
-- UI EXE: `PyInstaller --onefile --noconsole -n Morphix_UI` with add-data and add-binary for morphix_core and ffmpeg.
+- CLI EXE: `PyInstaller Morphix_CLI.spec` (onefile, bundles ffmpeg binaries).
+- UI EXE: `PyInstaller Morphix_UI.spec` (onefile, noconsole, bundles morphix_core and ffmpeg).
 - COM DLL: built with `msbuild` (Release/x64) from `ContextMenuWrl/MorphixContextMenu.vcxproj`.
 - MSIX: packed with `makeappx.exe`, signed with `signtool.exe` using a self-signed cert (`CN=Morphix`).
-- `.spec` files exist at project root for PyInstaller configs.
+- `.spec` files at project root are the canonical PyInstaller build configs — use them instead of raw CLI flags.
 
 ## Trim Feature
 

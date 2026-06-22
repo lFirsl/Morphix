@@ -569,10 +569,10 @@ def test_prop16_ffmpeg_exception_reraised_after_logging(stderr_bytes):
         # _write_ffmpeg_error itself must not raise
         ctx._write_ffmpeg_error(exc)
 
-        # _run_ffmpeg must re-raise the exception
+        # _run_ffmpeg must re-raise as RuntimeError with a user-friendly message
         mock_stream = MagicMock()
         with patch.object(ctx, "_run_ffmpeg_simple", side_effect=exc):
-            with pytest.raises(ffmpeg_lib.Error):
+            with pytest.raises(RuntimeError):
                 ctx._run_ffmpeg(mock_stream, "PASS1")
 
 

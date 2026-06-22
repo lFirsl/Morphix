@@ -53,6 +53,7 @@ def run(
     start: float | None = None,
     end: float | None = None,
     warning_cb=None,
+    encoder_override: str | None = None,
 ):
     # Backwards-compatible entry point used by CLI and UI.
     ctx = RunContext(
@@ -69,5 +70,6 @@ def run(
         start=start,
         end=end,
         warning_cb=warning_cb,
+        encoder_override=encoder_override,
     )
     return ctx.execute()

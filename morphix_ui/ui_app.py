@@ -149,9 +149,50 @@ class MorphixUI(tk.Tk):
         self.device_menu.grid(row=0, column=1, sticky="w", pady=2)
 
         tk.Label(self.advanced_frame, text="Encoder").grid(row=1, column=0, sticky="w", padx=(15, 4), pady=2)
-        encoder_choices = self._get_encoder_choices()
-        self.encoder_menu = tk.OptionMenu(self.advanced_frame, self.encoder_var, *encoder_choices)
+
+        self._build_encoder_menu()
         self.encoder_menu.grid(row=1, column=1, sticky="w", pady=2)
+
+        # Update encoder availability when device changes.
+        self.device_var.trace_add("write", lambda *_: self._refresh_encoder_menu())
+
+    def _build_encoder_menu(self):
+        """Build the encoder OptionMenu with greyed-out unavailable items."""
+        self.encoder_menu = tk.OptionMenu(self.advanced_frame, self.encoder_var, "Auto")
+        self._refresh_encoder_menu()
+
+    def _refresh_encoder_menu(self):
+        """Refresh encoder dropdown: grey out unavailable encoders with inline reasons."""
+        from morphix_core.ffmpeg_utils import detect_available_encoders
+        ffmpeg_path, _, _ = find_ffmpeg_binaries()
+        available = detect_available_encoders(ffmpeg_path)
+
+        device_key = self.device_label_to_key.get(self.device_var.get(), "cpu")
+        has_nvidia = device_key in ("nvidia", "auto") and "NVIDIA" in self.device_var.get()
+
+        # All possible encoders with their requirements.
+        all_encoders = [
+            ("h264_nvenc", "no NVIDIA GPU", lambda: "h264_nvenc" in available and has_nvidia),
+            ("libx264", "needs GPL ffmpeg", lambda: "libx264" in available),
+            ("libopenh264", "not in this ffmpeg build", lambda: "libopenh264" in available),
+        ]
+
+        menu = self.encoder_menu["menu"]
+        menu.delete(0, "end")
+        menu.add_command(label="Auto", command=lambda: self.encoder_var.set("Auto"))
+
+        for name, reason, check_fn in all_encoders:
+            if check_fn():
+                menu.add_command(label=name, command=lambda n=name: self.encoder_var.set(n))
+            else:
+                menu.add_command(label=f"{name}  ({reason})", state="disabled")
+
+        # If current selection is no longer valid, reset to Auto.
+        current = self.encoder_var.get()
+        if current != "Auto":
+            valid = any(name == current and check_fn() for name, _, check_fn in all_encoders)
+            if not valid:
+                self.encoder_var.set("Auto")
 
     def _get_encoder_choices(self):
         """Return available encoder options for the dropdown."""
@@ -459,10 +500,15 @@ class MorphixUI(tk.Tk):
                 detected = "nvidia" if "NVIDIA" in device_label else None
                 ffmpeg_path, _, _ = find_ffmpeg_binaries()
                 available = detect_available_encoders(ffmpeg_path)
-                try:
-                    enc_name, _ = select_encoder(available, device_preference, detected)
-                except RuntimeError:
-                    enc_name = "none"
+                enc_override = self.encoder_var.get()
+                if enc_override and enc_override != "Auto":
+                    enc_name = enc_override
+                else:
+                    enc_override = None
+                    try:
+                        enc_name, _ = select_encoder(available, device_preference, detected)
+                    except RuntimeError:
+                        enc_name = "none"
                 self.after(0, lambda: self.device_status.config(
                     text=f"Device: {device_label} | Encoder: {enc_name}"))
 
@@ -480,6 +526,7 @@ class MorphixUI(tk.Tk):
                     start=trim_start,
                     end=trim_end,
                     warning_cb=on_warning,
+                    encoder_override=enc_override,
                 )
                 self._set_status("Done.")
             except Exception as exc:

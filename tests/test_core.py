@@ -1184,18 +1184,15 @@ def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, capsys):
 # --- Requirement 9.4: exception is re-raised by _run_ffmpeg ---
 
 def test_run_ffmpeg_reraises_after_writing_error_log(tmp_path):
-    """_run_ffmpeg re-raises the ffmpeg.Error after calling _write_ffmpeg_error."""
+    """_run_ffmpeg re-raises as RuntimeError after calling _write_ffmpeg_error."""
     ctx = make_ctx_for_error_log(tmp_path)
     ctx.progress = False
 
     fake_exc = ffmpeg_lib.Error("ffmpeg", None, b"fatal error")
 
-    with patch.object(ctx, "_run_ffmpeg_simple", side_effect=fake_exc), \
-         patch.object(ctx, "_write_ffmpeg_error") as mock_write:
-        with pytest.raises(ffmpeg_lib.Error):
+    with patch.object(ctx, "_run_ffmpeg_simple", side_effect=fake_exc):
+        with pytest.raises(RuntimeError, match="FFmpeg error: fatal error"):
             ctx._run_ffmpeg(MagicMock(), "PASS1")
-
-    mock_write.assert_called_once_with(fake_exc)
 
 
 # ---------------------------------------------------------------------------

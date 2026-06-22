@@ -28,6 +28,7 @@ class RunContext:
         start: float | None = None,
         end: float | None = None,
         warning_cb=None,
+        encoder_override: str | None = None,
     ):
         self.input_path = os.path.abspath(input_path)
         self.max_mb = max_mb
@@ -40,6 +41,7 @@ class RunContext:
         self.progress = progress
         self.progress_cb = progress_cb
         self.warning_cb = warning_cb
+        self.encoder_override = encoder_override
 
         # Trim fields.
         self.trim_start = start
@@ -75,9 +77,16 @@ class RunContext:
 
         # Select encoder based on available encoders and device.
         available = detect_available_encoders(self.ffmpeg_path)
-        self.encoder_name, self.encoder_strategy = select_encoder(
-            available, self.device_preference, self.detected_device
-        )
+        if self.encoder_override and self.encoder_override != "Auto":
+            # Manual override — look up strategy from priority list.
+            from morphix_core.encoder_selection import ENCODER_PRIORITY
+            strategy_map = {name: strategy for name, strategy, _ in ENCODER_PRIORITY}
+            self.encoder_name = self.encoder_override
+            self.encoder_strategy = strategy_map.get(self.encoder_override, "single_pass_cbr")
+        else:
+            self.encoder_name, self.encoder_strategy = select_encoder(
+                available, self.device_preference, self.detected_device
+            )
         print(f"Encoder: {self.encoder_name} (strategy: {self.encoder_strategy})")
 
         if self.encoder_name == "libopenh264":
@@ -352,7 +361,31 @@ class RunContext:
                 self._run_ffmpeg_simple(stream)
         except ffmpeg.Error as exc:
             self._write_ffmpeg_error(exc)
-            raise
+            raise RuntimeError(self._parse_ffmpeg_error(exc)) from exc
+
+    @staticmethod
+    def _parse_ffmpeg_error(exc):
+        """Extract a user-friendly message from an ffmpeg error."""
+        stderr = exc.stderr or b""
+        if b"Driver does not support the required nvenc API" in stderr:
+            return (
+                "NVIDIA driver is too old for this ffmpeg build. "
+                "Update your GPU drivers or select a different encoder."
+            )
+        if b"No NVENC capable devices found" in stderr:
+            return "No NVIDIA GPU found. Select a different device or encoder."
+        if b"Cannot load" in stderr and b"nvcuda.dll" in stderr:
+            return "NVIDIA CUDA drivers not found. Update your GPU drivers."
+        # Unknown error — extract first meaningful line.
+        for line in stderr.decode(errors="replace").splitlines():
+            line = line.strip()
+            if line and not line.startswith(("frame=", "fps=", "stream_", "bitrate=",
+                                            "total_size=", "out_time", "dup_frames",
+                                            "drop_frames", "speed=", "progress=",
+                                            "Qavg:", "Press [q]")):
+                if "Error" in line or "error" in line or "failed" in line:
+                    return f"FFmpeg error: {line}"
+        return "An unknown FFmpeg error has occurred. Check the error log for details."
 
     def _run_ffmpeg_with_progress(self, stream, phase):
         # Enable progress reporting and parse out_time_ms from stderr.
@@ -374,7 +407,7 @@ class RunContext:
         process.wait()
         self._finish_progress_bar(bar)
         if process.returncode != 0:
-            raise ffmpeg.Error("ffmpeg", b"".join(stderr_lines), None)
+            raise ffmpeg.Error("ffmpeg", None, b"".join(stderr_lines))
 
     def _run_ffmpeg_simple(self, stream):
         # Run without progress parsing; optionally suppress logs and console windows.
@@ -391,7 +424,7 @@ class RunContext:
             err_bytes = None
             if process.stderr is not None:
                 err_bytes = process.stderr.read()
-            raise ffmpeg.Error("ffmpeg", err_bytes, None)
+            raise ffmpeg.Error("ffmpeg", None, err_bytes)
 
     def _maybe_create_progress_bar(self, phase):
         # Create a tqdm bar only for CLI mode (no progress callback).
@@ -428,6 +461,9 @@ class RunContext:
 
     def _write_ffmpeg_error(self, exc):
         # Persist ffmpeg stderr to a log file for troubleshooting.
+        if not self.log_dir:
+            self.log_dir = os.path.join(self.input_dir, ".output")
+            os.makedirs(self.log_dir, exist_ok=True)
         err_path = os.path.join(self.log_dir, "ffmpeg-error.log")
         with open(err_path, "wb") as f:
             if exc.stderr:

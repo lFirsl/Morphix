@@ -75,6 +75,9 @@ class _FakeWidget:
     def __getattr__(self, name):
         return lambda *a, **kw: None
 
+    def __getitem__(self, key):
+        return _FakeWidget()
+
 
 class _FakeTk(_FakeWidget):
     """Fake root Tk window — MorphixUI inherits from tk.Tk."""

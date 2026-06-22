@@ -13,6 +13,7 @@ from morphix_core.core import (
     find_ffmpeg_binaries,
     get_available_devices,
     get_ffmpeg_version,
+    detect_build_type,
     resolve_device_info,
     run,
 )
@@ -405,16 +406,33 @@ class MorphixUI(tk.Tk):
         def progress_cb(pct, phase):
             # Update status with pass labels and brief descriptions.
             if phase == "PASS1":
-                self._set_status(
-                    f"Pass 1/2: Analyzing video for bitrate data... {pct:.1f}%"
-                )
+                self._set_status(f"Pass 1/2: Analyzing video... {pct:.1f}%")
+            elif phase == "PASS2":
+                self._set_status(f"Pass 2/2: Encoding final output... {pct:.1f}%")
+            elif phase == "CRF":
+                self._set_status(f"Encoding (quality-preserving)... {pct:.1f}%")
             else:
-                self._set_status(
-                    f"Pass 2/2: Encoding final output... {pct:.1f}%"
-                )
+                self._set_status(f"Encoding... {pct:.1f}%")
 
         def worker():
             try:
+                def on_warning(msg):
+                    self.after(0, lambda: self.status.config(text=msg, fg="#CC7700"))
+
+                from morphix_core.encoder_selection import select_encoder
+                from morphix_core.ffmpeg_utils import detect_available_encoders
+                from morphix_core.gpu_detection import resolve_device_info as _resolve
+                device_label, _ = _resolve(device_preference)
+                detected = "nvidia" if "NVIDIA" in device_label else None
+                ffmpeg_path, _, _ = find_ffmpeg_binaries()
+                available = detect_available_encoders(ffmpeg_path)
+                try:
+                    enc_name, _ = select_encoder(available, device_preference, detected)
+                except RuntimeError:
+                    enc_name = "none"
+                self.after(0, lambda: self.device_status.config(
+                    text=f"Device: {device_label} | Encoder: {enc_name}"))
+
                 run(
                     input_path=input_path,
                     max_mb=size_value,
@@ -428,6 +446,7 @@ class MorphixUI(tk.Tk):
                     progress_cb=progress_cb,
                     start=trim_start,
                     end=trim_end,
+                    warning_cb=on_warning,
                 )
                 self._set_status("Done.")
             except Exception as exc:
@@ -472,13 +491,14 @@ class MorphixUI(tk.Tk):
         # Detect whether bundled or PATH ffmpeg binaries are being used.
         ffmpeg_path, _, source = find_ffmpeg_binaries()
         version = get_ffmpeg_version(ffmpeg_path)
+        build = detect_build_type(ffmpeg_path)
         if source == "bundled":
             label = "bundled"
         elif source == "path":
             label = "system PATH"
         else:
             label = "missing"
-        self.ffmpeg_status.config(text=f"FFmpeg: {label} (Version: {version})")
+        self.ffmpeg_status.config(text=f"FFmpeg: {label} (Version: {version}, Build: {build})")
 
     def _get_device_preference(self):
         # Map the selected label to a device key for the core logic.

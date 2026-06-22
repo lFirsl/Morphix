@@ -5,8 +5,9 @@ import sys
 
 import ffmpeg
 
-from morphix_core.ffmpeg_utils import find_ffmpeg_binaries, ffprobe_media, popen_no_window_kwargs
+from morphix_core.ffmpeg_utils import find_ffmpeg_binaries, ffprobe_media, popen_no_window_kwargs, detect_available_encoders
 from morphix_core.gpu_detection import detect_cuda, resolve_device_info
+from morphix_core.encoder_selection import select_encoder, OPENH264_WARNING, SAFETY_MARGIN
 from morphix_core.bitrate import target_kbps_for_size_mb, compute_scaled_resolution, clamp_even, parse_fps
 
 
@@ -26,6 +27,7 @@ class RunContext:
         progress_cb=None,
         start: float | None = None,
         end: float | None = None,
+        warning_cb=None,
     ):
         self.input_path = os.path.abspath(input_path)
         self.max_mb = max_mb
@@ -37,6 +39,7 @@ class RunContext:
         self.disable_logs = disable_logs
         self.progress = progress
         self.progress_cb = progress_cb
+        self.warning_cb = warning_cb
 
         # Trim fields.
         self.trim_start = start
@@ -57,6 +60,9 @@ class RunContext:
         self.device_label = "CPU"
         self.ffmpeg_path, self.ffprobe_path, self.ffmpeg_source = find_ffmpeg_binaries()
         self.has_audio = False
+        self.encoder_name = ""
+        self.encoder_strategy = ""
+        self.encoder_warning = ""
 
     def execute(self):
         print("Morphix Prototype")
@@ -67,6 +73,19 @@ class RunContext:
         self._probe_media()
         self._configure_hwaccel()
 
+        # Select encoder based on available encoders and device.
+        available = detect_available_encoders(self.ffmpeg_path)
+        self.encoder_name, self.encoder_strategy = select_encoder(
+            available, self.device_preference, self.detected_device
+        )
+        print(f"Encoder: {self.encoder_name} (strategy: {self.encoder_strategy})")
+
+        if self.encoder_name == "libopenh264":
+            self.encoder_warning = OPENH264_WARNING
+            print(self.encoder_warning, file=sys.stderr)
+            if self.warning_cb:
+                self.warning_cb(self.encoder_warning)
+
         # Merge trim -ss/-t into input_kwargs when trimming is active.
         if self.trimming:
             self.input_kwargs = {**self.input_kwargs, "ss": str(self.trim_start), "t": str(self.trim_duration)}
@@ -76,9 +95,48 @@ class RunContext:
         # If the estimated segment already fits within max_mb, use a single-pass
         # CRF encode (quality-preserving, no bitrate target).
         if self.trimming and self._estimated_segment_mb() <= self.max_mb:
-            print(f"Trimmed segment (~{self._estimated_segment_mb():.1f}MB) fits within {self.max_mb}MB — using CRF encode.")
-            return self._run_crf_encode()
+            if self.encoder_name in ("libx264", "h264_nvenc"):
+                print(f"Trimmed segment (~{self._estimated_segment_mb():.1f}MB) fits within {self.max_mb}MB — using CRF encode.")
+                return self._run_crf_encode()
 
+        # Dispatch to the appropriate encoding strategy.
+        if self.encoder_strategy == "two_pass":
+            return self._encode_two_pass()
+        elif self.encoder_strategy == "nvenc_multipass":
+            return self._encode_nvenc_multipass()
+        elif self.encoder_strategy == "single_pass_cbr":
+            return self._encode_single_pass_cbr()
+
+    def _estimated_segment_mb(self) -> float:
+        """Estimate the size of the trim segment based on the source bitrate."""
+        total_bitrate = int(self.probe["format"].get("bit_rate", 0))
+        return (total_bitrate * self.trim_duration) / 8 / 1_000_000
+
+    def _run_crf_encode(self) -> str:
+        """Single-pass CRF encode — preserves quality without a bitrate target."""
+        crf_input = ffmpeg.input(self.input_path, **self.input_kwargs)
+        crf_video = crf_input.video
+        if self.scale_filter:
+            crf_video = crf_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+        if self.encoder_name == "h264_nvenc":
+            vcodec_kwargs = {"vcodec": "h264_nvenc", "rc": "constqp", "qp": 18}
+        else:
+            vcodec_kwargs = {"vcodec": "libx264", "preset": "medium", "crf": 18}
+        if self.has_audio:
+            crf_audio = crf_input.audio
+            crf_stream = ffmpeg.output(
+                crf_video, crf_audio, self.output_path,
+                **vcodec_kwargs, acodec="aac", audio_bitrate="128k",
+            )
+        else:
+            crf_stream = ffmpeg.output(
+                crf_video, self.output_path, **vcodec_kwargs, an=None,
+            )
+        self._run_ffmpeg(crf_stream, "CRF")
+        return self.output_path
+
+    def _encode_two_pass(self):
+        """Two-pass libx264 encode."""
         self._prepare_logs()
 
         # Pass 1: analysis (video only).
@@ -90,7 +148,7 @@ class RunContext:
             ffmpeg.output(
                 pass1_video,
                 "NUL",
-                vcodec="libx264",
+                vcodec=self.encoder_name,
                 preset="medium",
                 **{"b:v": f"{self.video_kbps}k"},
                 **{"pass": 1},
@@ -111,7 +169,7 @@ class RunContext:
                 pass2_video,
                 pass2_audio,
                 self.output_path,
-                vcodec="libx264",
+                vcodec=self.encoder_name,
                 preset="medium",
                 **{"b:v": f"{self.video_kbps}k"},
                 **{"pass": 2},
@@ -123,7 +181,7 @@ class RunContext:
             pass2_stream = ffmpeg.output(
                 pass2_video,
                 self.output_path,
-                vcodec="libx264",
+                vcodec=self.encoder_name,
                 preset="medium",
                 **{"b:v": f"{self.video_kbps}k"},
                 **{"pass": 2},
@@ -135,30 +193,61 @@ class RunContext:
         self._cleanup_logs()
         return self.output_path
 
-    def _estimated_segment_mb(self) -> float:
-        """Estimate the size of the trim segment based on the source bitrate."""
-        total_bitrate = int(self.probe["format"].get("bit_rate", 0))
-        return (total_bitrate * self.trim_duration) / 8 / 1_000_000
-
-    def _run_crf_encode(self) -> str:
-        """Single-pass CRF encode — preserves quality without a bitrate target."""
-        crf_input = ffmpeg.input(self.input_path, **self.input_kwargs)
-        crf_video = crf_input.video
+    def _encode_nvenc_multipass(self):
+        """NVENC multipass encode — single invocation with internal two-pass."""
+        enc_input = ffmpeg.input(self.input_path, **self.input_kwargs)
+        enc_video = enc_input.video
         if self.scale_filter:
-            crf_video = crf_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+            enc_video = enc_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+        output_kwargs = {
+            "vcodec": "h264_nvenc",
+            "preset": "p4",
+            "multipass": "fullres",
+            "b:v": f"{self.video_kbps}k",
+            "maxrate": f"{self.video_kbps}k",
+            "bufsize": f"{self.video_kbps * 2}k",
+        }
         if self.has_audio:
-            crf_audio = crf_input.audio
-            crf_stream = ffmpeg.output(
-                crf_video, crf_audio, self.output_path,
-                vcodec="libx264", preset="medium", crf=18,
-                acodec="aac", audio_bitrate="128k",
-            )
+            enc_audio = enc_input.audio
+            stream = ffmpeg.output(enc_video, enc_audio, self.output_path,
+                                   **output_kwargs, acodec="aac", audio_bitrate="128k")
         else:
-            crf_stream = ffmpeg.output(
-                crf_video, self.output_path,
-                vcodec="libx264", preset="medium", crf=18, an=None,
-            )
-        self._run_ffmpeg(crf_stream, "CRF")
+            stream = ffmpeg.output(enc_video, self.output_path, **output_kwargs, an=None)
+        self._run_ffmpeg(stream, "NVENC")
+        return self.output_path
+
+    def _encode_single_pass_cbr(self):
+        """Single-pass CBR encode with safety margin. Retries once if over limit."""
+        safe_kbps = int(self.video_kbps * SAFETY_MARGIN)
+        output = self._run_single_pass(safe_kbps)
+
+        # Check if output exceeds target; retry with further reduction.
+        output_mb = os.path.getsize(output) / 1_000_000
+        if output_mb > self.max_mb:
+            reduction = self.max_mb / output_mb * 0.95
+            retry_kbps = int(safe_kbps * reduction)
+            print(f"Output {output_mb:.1f}MB exceeds {self.max_mb}MB — retrying at {retry_kbps}k")
+            output = self._run_single_pass(retry_kbps)
+
+        return output
+
+    def _run_single_pass(self, kbps):
+        """Execute a single-pass encode at the given bitrate."""
+        enc_input = ffmpeg.input(self.input_path, **self.input_kwargs)
+        enc_video = enc_input.video
+        if self.scale_filter:
+            enc_video = enc_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+        output_kwargs = {
+            "vcodec": self.encoder_name,
+            "b:v": f"{kbps}k",
+        }
+        if self.has_audio:
+            enc_audio = enc_input.audio
+            stream = ffmpeg.output(enc_video, enc_audio, self.output_path,
+                                   **output_kwargs, acodec="aac", audio_bitrate="128k")
+        else:
+            stream = ffmpeg.output(enc_video, self.output_path, **output_kwargs, an=None)
+        self._run_ffmpeg(stream, "ENCODE")
         return self.output_path
 
     def _resolve_output_path(self):
@@ -194,6 +283,9 @@ class RunContext:
     def _configure_hwaccel(self):
         # Resolve the requested device preference to a label and hwaccel string.
         self.device_label, hwaccel = resolve_device_info(self.device_preference)
+        self.detected_device = None
+        if "NVIDIA" in self.device_label:
+            self.detected_device = "nvidia"
         if self.device_preference == "nvidia" and not detect_cuda():
             print("NVIDIA GPU requested but not available; falling back to CPU.")
         print(f"Compression device: {self.device_label} (hwaccel={hwaccel or 'none'})")

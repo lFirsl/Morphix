@@ -7,6 +7,8 @@ from morphix_core.ffmpeg_utils import (  # noqa: F401
     get_ffmpeg_version,
     ffprobe_media,
     popen_no_window_kwargs,
+    detect_available_encoders,
+    detect_build_type,
 )
 from morphix_core.gpu_detection import (  # noqa: F401
     detect_cuda,
@@ -15,6 +17,12 @@ from morphix_core.gpu_detection import (  # noqa: F401
     detect_device_info,
     get_available_devices,
     resolve_device_info,
+)
+from morphix_core.encoder_selection import (  # noqa: F401
+    select_encoder,
+    ENCODER_PRIORITY,
+    OPENH264_WARNING,
+    SAFETY_MARGIN,
 )
 from morphix_core.encoding import RunContext  # noqa: F401
 from morphix_core.bitrate import (  # noqa: F401
@@ -44,6 +52,7 @@ def run(
     progress_cb=None,
     start: float | None = None,
     end: float | None = None,
+    warning_cb=None,
 ):
     # Backwards-compatible entry point used by CLI and UI.
     ctx = RunContext(
@@ -59,5 +68,6 @@ def run(
         progress_cb=progress_cb,
         start=start,
         end=end,
+        warning_cb=warning_cb,
     )
     return ctx.execute()

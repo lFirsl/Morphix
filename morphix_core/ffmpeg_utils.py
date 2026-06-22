@@ -58,6 +58,36 @@ def get_ffmpeg_version(ffmpeg_path):
     return "unknown"
 
 
+def detect_available_encoders(ffmpeg_path):
+    """Run ffmpeg -encoders and return a set of available video encoder names."""
+    if not ffmpeg_path:
+        return set()
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-encoders", "-hide_banner"],
+            check=False,
+            capture_output=True,
+            text=True,
+            **popen_no_window_kwargs(),
+        )
+    except OSError:
+        return set()
+    if result.returncode != 0:
+        return set()
+    encoders = set()
+    for line in result.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and len(parts[0]) >= 6 and parts[0][0] == "V":
+            encoders.add(parts[1])
+    return encoders
+
+
+def detect_build_type(ffmpeg_path):
+    """Return 'gpl' if libx264 is available, 'lgpl' otherwise."""
+    encoders = detect_available_encoders(ffmpeg_path)
+    return "gpl" if "libx264" in encoders else "lgpl"
+
+
 def ffprobe_media(path, ffprobe_path):
     import json
     # Run ffprobe directly so we can suppress console windows on Windows.

@@ -17,7 +17,7 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 
 ## Coding Conventions
 
-- Python 3.13+, conda environment named `env`.
+- Python 3.13+, conda environment named `morphix`.
 - Uses `ffmpeg-python` library for building ffmpeg command graphs (`ffmpeg.input()`, `ffmpeg.output()`, `ffmpeg.compile()`), but execution is via `subprocess.Popen` for real-time progress parsing and console window suppression.
 - All subprocess calls use `popen_no_window_kwargs()` — `CREATE_NO_WINDOW` on Windows, `start_new_session=True` elsewhere.
 - Bundled ffmpeg binaries searched in: `_MEIPASS` → Python exe directory → `../ffmpeg/` relative to `core.py` → system PATH via `shutil.which`.
@@ -26,7 +26,7 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - Target video bitrate formula: `max(int((size_mb * 1_000_000 * 8) / duration_s / 1000) - audio_kbps, 1)` with default `audio_kbps=128`.
 - BPP thresholds: low=0.05, medium=0.07, high=0.10.
 - Settings stored at `%APPDATA%\Morphix\settings.json`. Fallback to 20 MB if missing/unreadable.
-- Validation (`check_target_exceeds_file_size`, `check_low_compression_ratio`) runs before any ffprobe/ffmpeg call.
+- Validation (`check_target_exceeds_file_size`, `check_low_compression_ratio`, `check_trim_values`) runs before any ffprobe/ffmpeg call.
 - Passlog files go in `.output/` subdirectory under the input file's directory; cleaned up via glob after Pass2.
 - GPU detection order: NVIDIA (`nvidia-smi -L`) → AMD (`rocm-smi`/WMI) → Intel (WMI/registry) → CPU fallback. Exceptions are swallowed per-vendor.
 - `get_available_devices()` always ends with `("cpu", "CPU")`.
@@ -38,16 +38,29 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - `pytest` + `hypothesis` for property-based tests (min 100 examples per property).
 - Property tests reference design properties: `# Feature: morphix-video-compressor, Property N: <text>`
 - Integration tests tagged `@pytest.mark.integration` (require ffmpeg on PATH).
-- Tests live in `tests/` directory with files: `test_core.py`, `test_properties.py`, `test_cli.py`, `test_ui.py`, `test_integration.py`.
+- Tests live in `tests/` directory with files: `test_core.py`, `test_properties.py`, `test_cli.py`, `test_ui.py`, `test_integration.py`, `test_validation.py`.
 - `pytest.ini` exists at project root for test configuration.
 
 ## Build & Packaging
 
+- All builds run from the `morphix` conda environment (`conda run -n morphix ...`).
 - CLI EXE: `PyInstaller --onefile -n Morphix_CLI` with hidden imports and bundled ffmpeg binaries.
 - UI EXE: `PyInstaller --onefile --noconsole -n Morphix_UI` with add-data and add-binary for morphix_core and ffmpeg.
 - COM DLL: built with `msbuild` (Release/x64) from `ContextMenuWrl/MorphixContextMenu.vcxproj`.
 - MSIX: packed with `makeappx.exe`, signed with `signtool.exe` using a self-signed cert (`CN=Morphix`).
 - `.spec` files exist at project root for PyInstaller configs.
+
+## Trim Feature
+
+- Users provide `start` and `end` (seconds) to extract and compress a specific segment.
+- CLI args: `--start` and `--end` (float seconds). UI: "Enable Trim" checkbox with HH:MM:SS entries.
+- Trim is applied directly via ffmpeg `-ss` and `-t` input options on the original file during encode — no temporary files.
+- When trimming, `trim_duration` (not full video duration) is used for bitrate calculation and progress tracking.
+- If the estimated segment size (source bitrate × trim_duration) fits within `max_mb`, a single-pass CRF 18 encode is used (quality-preserving, no bitrate target).
+- If the segment exceeds `max_mb`, the normal two-pass encode runs with `-ss`/`-t` in `input_kwargs`.
+- Both passes receive identical `-ss`/`-t` values ensuring the two-pass log stays in sync.
+- `_estimated_segment_mb()` uses `format.bit_rate` from ffprobe to estimate segment size.
+- Validation: `check_trim_values(start, end, full_duration)` ensures both provided, ≥ 0, end > start, and within video duration.
 
 ## Key Rules
 
@@ -61,3 +74,4 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - Default output path: `{input_stem}_{size}mb.{ext}` (CLI/core) or `{input_stem}-morphix-compressed.{ext}` (UI/ContextMenu).
 - The UI auto-populates the output field when an input is selected (unless manually edited).
 - `RunContext` uses `device_preference` parameter (keys: `"auto"`, `"nvidia"`, `"amd"`, `"intel"`, `"cpu"`).
+- `RunContext` accepts `start` and `end` (float seconds, optional) for trim. `self.trimming` is set in `__init__` based on both being non-None.

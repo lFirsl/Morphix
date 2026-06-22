@@ -39,8 +39,8 @@ class MorphixUI(tk.Tk):
     def __init__(self, input_file=None):
         super().__init__()
         self.title("Morphix")
-        self.geometry("560x280")
-        self.minsize(520, 360)
+        self.geometry("560x380")
+        self.minsize(520, 380)
         self.resizable(True, True)
 
         # --- State variables ---
@@ -163,11 +163,15 @@ class MorphixUI(tk.Tk):
     def _on_trim_toggle(self):
         """Show/hide the time entry frame when the trim checkbox changes."""
         if self.trim_enabled_var.get():
-            # row=6 is its own dedicated row — never overlaps with Tip at row=7.
             self.trim_frame.grid(row=6, column=0, columnspan=4, sticky="w")
             self.grid_rowconfigure(6, minsize=32)
+            self.minsize(520, 410)
+            self.geometry("560x410")
         else:
             self.trim_frame.grid_forget()
+            self.grid_rowconfigure(6, minsize=0)
+            self.minsize(520, 380)
+            self.geometry("560x380")
 
     def _probe_media_duration(self, input_path: str):
         """Probe the selected video and set trim duration bounds (non-blocking via after)."""

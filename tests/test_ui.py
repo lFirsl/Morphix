@@ -379,7 +379,7 @@ class TestMorphixUITrimControls(unittest.TestCase):
         self.app.trim_enabled_var.set(True)
         self.app._on_trim_toggle()
         grid_info = self.app.trim_frame.grid_info()
-        assert grid_info.get("row") == 6
+        assert grid_info.get("row") == 5
 
     def test_time_entries_hidden_when_unchecked(self):
         """Time entry frame hides when trim is disabled."""

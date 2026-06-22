@@ -40,8 +40,8 @@ class MorphixUI(tk.Tk):
     def __init__(self, input_file=None):
         super().__init__()
         self.title("Morphix")
-        self.geometry("560x380")
-        self.minsize(520, 380)
+        self.geometry("560x440")
+        self.minsize(520, 440)
         self.resizable(True, True)
 
         # --- State variables ---
@@ -53,6 +53,8 @@ class MorphixUI(tk.Tk):
         self.device_label_to_key = {label: key for key, label in self.device_options}
         default_device_label = self.device_options[0][1] if self.device_options else "CPU"
         self.device_var = tk.StringVar(value=default_device_label)
+        self.encoder_var = tk.StringVar(value="Auto")
+        self.advanced_var = tk.BooleanVar(value=False)
         self._is_running = False
         self._auto_output = True
         self._suppress_output_trace = False
@@ -89,16 +91,21 @@ class MorphixUI(tk.Tk):
         self._build_input_row(padding)
         self._build_output_row(padding)
         self._build_target_size_row(padding)
-        self._build_device_row(padding)
 
         # Visual separator before interactive controls.
         tk.Frame(self, height=2, bd=1, relief="groove").grid(
-            row=4, column=0, columnspan=3, sticky="ew", pady=(6, 6)
+            row=3, column=0, columnspan=3, sticky="ew", pady=(6, 6)
         )
 
         self._build_trim_section(padding)
+
+        # Separator between trim and advanced.
+        tk.Frame(self, height=2, bd=1, relief="groove").grid(
+            row=6, column=0, columnspan=3, sticky="ew", pady=(6, 6)
+        )
+
+        self._build_advanced_section(padding)
         self._build_compress_button(padding)
-        self.grid_rowconfigure(5, minsize=8)  # spacer between trim and tip
         self._build_tip_row(padding)
         self._build_status_labels(padding)
 
@@ -126,11 +133,43 @@ class MorphixUI(tk.Tk):
         self.unit_menu = tk.OptionMenu(self, self.unit_var, "MB", "GB")
         self.unit_menu.grid(row=2, column=2, sticky="w", **padding)
 
-    def _build_device_row(self, padding):
-        """Row 3: device selection dropdown."""
-        tk.Label(self, text="Device").grid(row=3, column=0, sticky="w", **padding)
-        self.device_menu = tk.OptionMenu(self, self.device_var, *self.device_label_to_key.keys())
-        self.device_menu.grid(row=3, column=1, sticky="w", **padding)
+    def _build_advanced_section(self, padding):
+        """Row 7: Advanced collapsible section with Device and Encoder."""
+        tk.Checkbutton(
+            self,
+            text="Advanced",
+            variable=self.advanced_var,
+            command=self._on_advanced_toggle,
+        ).grid(row=7, column=0, columnspan=3, sticky="w", **padding)
+
+        self.advanced_frame = tk.Frame(self)
+
+        tk.Label(self.advanced_frame, text="Device").grid(row=0, column=0, sticky="w", padx=(15, 4), pady=2)
+        self.device_menu = tk.OptionMenu(self.advanced_frame, self.device_var, *self.device_label_to_key.keys())
+        self.device_menu.grid(row=0, column=1, sticky="w", pady=2)
+
+        tk.Label(self.advanced_frame, text="Encoder").grid(row=1, column=0, sticky="w", padx=(15, 4), pady=2)
+        encoder_choices = self._get_encoder_choices()
+        self.encoder_menu = tk.OptionMenu(self.advanced_frame, self.encoder_var, *encoder_choices)
+        self.encoder_menu.grid(row=1, column=1, sticky="w", pady=2)
+
+    def _get_encoder_choices(self):
+        """Return available encoder options for the dropdown."""
+        from morphix_core.ffmpeg_utils import detect_available_encoders
+        ffmpeg_path, _, _ = find_ffmpeg_binaries()
+        available = detect_available_encoders(ffmpeg_path)
+        choices = ["Auto"]
+        for name in ["h264_nvenc", "libx264", "libopenh264"]:
+            if name in available:
+                choices.append(name)
+        return choices
+
+    def _on_advanced_toggle(self):
+        """Show/hide the advanced options frame."""
+        if self.advanced_var.get():
+            self.advanced_frame.grid(row=8, column=0, columnspan=4, sticky="w")
+        else:
+            self.advanced_frame.grid_forget()
 
     def _build_trim_section(self, padding):
         """Row 4: trim checkbox and conditional time entries."""
@@ -164,15 +203,9 @@ class MorphixUI(tk.Tk):
     def _on_trim_toggle(self):
         """Show/hide the time entry frame when the trim checkbox changes."""
         if self.trim_enabled_var.get():
-            self.trim_frame.grid(row=6, column=0, columnspan=4, sticky="w")
-            self.grid_rowconfigure(6, minsize=32)
-            self.minsize(520, 410)
-            self.geometry("560x410")
+            self.trim_frame.grid(row=5, column=0, columnspan=4, sticky="w")
         else:
             self.trim_frame.grid_forget()
-            self.grid_rowconfigure(6, minsize=0)
-            self.minsize(520, 380)
-            self.geometry("560x380")
 
     def _probe_media_duration(self, input_path: str):
         """Probe the selected video and set trim duration bounds (non-blocking via after)."""
@@ -214,35 +247,35 @@ class MorphixUI(tk.Tk):
         return f"{h:02d}:{m:02d}:{s:02d}"
 
     def _build_compress_button(self, padding):
-        """Row 4: compress action button and settings button."""
+        """Row 9: compress action button and settings button."""
         btn_frame = tk.Frame(self)
-        btn_frame.grid(row=4, column=0, columnspan=3, pady=12)
+        btn_frame.grid(row=9, column=0, columnspan=3, pady=12)
         self.compress_btn = tk.Button(btn_frame, text="Compress", command=self.run_compress)
         self.compress_btn.pack(side="left", padx=6)
         self.settings_btn = tk.Button(btn_frame, text="Settings", command=self.open_settings)
         self.settings_btn.pack(side="left", padx=6)
 
     def _build_tip_row(self, padding):
-        """Row 7: quality tip message (below trim section at row 6)."""
+        """Row 10: quality tip message."""
         tk.Label(self, text="Tip:", font=("Segoe UI", 10, "bold")).grid(
-            row=7, column=0, sticky="w", **padding
+            row=10, column=0, sticky="w", **padding
         )
         tk.Message(
             self,
             text="Lower target sizes can look blurry. Ideally set the Target Size to the maximum you're able to.",
             width=420,
-        ).grid(row=7, column=1, columnspan=2, sticky="w", **padding)
+        ).grid(row=10, column=1, columnspan=2, sticky="w", **padding)
 
     def _build_status_labels(self, padding):
-        """Rows 8-10: device status, ffmpeg status, and general status labels (shifted down)."""
+        """Rows 11-13: device status, ffmpeg status, and general status labels."""
         self.device_status = tk.Label(self, text="Device: CPU", fg="#444444")
-        self.device_status.grid(row=8, column=0, columnspan=3, sticky="w", padx=10, pady=2)
+        self.device_status.grid(row=11, column=0, columnspan=3, sticky="w", padx=10, pady=2)
 
         self.ffmpeg_status = tk.Label(self, text="FFmpeg: path", fg="#444444")
-        self.ffmpeg_status.grid(row=9, column=0, columnspan=3, sticky="w", padx=10, pady=2)
+        self.ffmpeg_status.grid(row=12, column=0, columnspan=3, sticky="w", padx=10, pady=2)
 
         self.status = tk.Label(self, text="", fg="#444444")
-        self.status.grid(row=10, column=0, columnspan=3, sticky="w", padx=10, pady=6)
+        self.status.grid(row=13, column=0, columnspan=3, sticky="w", padx=10, pady=6)
 
     # -------------------------------------------------------------------------
     # Event handlers — file browsing

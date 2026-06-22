@@ -491,7 +491,9 @@ class MorphixUI(tk.Tk):
         def worker():
             try:
                 def on_warning(msg):
-                    self.after(0, lambda: self.status.config(text=msg, fg="#CC7700"))
+                    if not getattr(self, "_openh264_warned", False):
+                        self._openh264_warned = True
+                        self.after(0, lambda: messagebox.showwarning("Morphix — Encoder Warning", msg))
 
                 from morphix_core.encoder_selection import select_encoder
                 from morphix_core.ffmpeg_utils import detect_available_encoders

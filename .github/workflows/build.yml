@@ -1,0 +1,56 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache ffmpeg LGPL binary
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg_binaries/bin
+          key: ffmpeg-lgpl-win64-latest
+
+      - name: Download ffmpeg LGPL build
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          $inner = Get-ChildItem ffmpeg_tmp -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Path ffmpeg_binaries/bin -Force
+          Copy-Item "$($inner.FullName)/bin/ffmpeg.exe" ffmpeg_binaries/bin/
+          Copy-Item "$($inner.FullName)/bin/ffprobe.exe" ffmpeg_binaries/bin/
+          Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Integration tests
+        run: python -m pytest tests/ -x --tb=short -q
+
+      - name: Build CLI
+        run: python -m PyInstaller Morphix_CLI.spec
+
+      - name: Build UI
+        run: python -m PyInstaller Morphix_UI.spec
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: morphix-${{ github.ref_name }}
+          path: |
+            dist/Morphix_CLI.exe
+            dist/Morphix_UI.exe

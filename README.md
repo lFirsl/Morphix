@@ -104,3 +104,8 @@ ffmpeg_binaries/    Gitignored; place ffmpeg.exe + ffprobe.exe in bin/
 ## Context Menu & MSIX Packaging
 
 See [docs/msix.md](docs/msix.md) for COM DLL build instructions, MSIX packaging, and certificate setup.
+
+
+## AI Assistance
+
+This project was developed with the assistance of AI agents. Steering files are provided in `.kiro/` to help developers, maintainers, and contributors work with AI tooling on this codebase.

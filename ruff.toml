@@ -1,0 +1,11 @@
+line-length = 88
+target-version = "py313"
+
+[lint]
+select = ["E", "W", "F", "I"]
+
+[lint.per-file-ignores]
+"tests/*" = ["E402", "E501"]
+
+[format]
+quote-style = "double"

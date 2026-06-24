@@ -19,7 +19,9 @@ def find_ffmpeg_binaries():
     if bundle_root:
         candidates.append(os.path.join(bundle_root, "ffmpeg"))
     candidates.append(os.path.join(os.path.dirname(sys.executable), "ffmpeg"))
-    candidates.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ffmpeg")))
+    candidates.append(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ffmpeg"))
+    )
 
     for base in candidates:
         ffmpeg_path = os.path.join(base, "ffmpeg.exe")
@@ -54,7 +56,7 @@ def get_ffmpeg_version(ffmpeg_path):
     first_line = result.stdout.splitlines()[0]
     prefix = "ffmpeg version "
     if first_line.startswith(prefix):
-        return first_line[len(prefix):].split(" ", 1)[0]
+        return first_line[len(prefix) :].split(" ", 1)[0]
     return "unknown"
 
 
@@ -90,6 +92,7 @@ def detect_build_type(ffmpeg_path):
 
 def ffprobe_media(path, ffprobe_path):
     import json
+
     # Run ffprobe directly so we can suppress console windows on Windows.
     cmd = [
         ffprobe_path,

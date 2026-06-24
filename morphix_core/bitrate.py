@@ -24,7 +24,9 @@ def clamp_even(value):
     return value if value % 2 == 0 else value - 1
 
 
-def compute_scaled_resolution(width, height, fps, video_bps, target_bpp, min_height=480):
+def compute_scaled_resolution(
+    width, height, fps, video_bps, target_bpp, min_height=480
+):
     # Determine a scaled resolution based on target bits-per-pixel-per-frame.
     if not all([width, height, fps, video_bps]):
         return None

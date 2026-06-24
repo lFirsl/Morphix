@@ -1,22 +1,29 @@
 """Unit tests for RunContext._resolve_output_path (Requirements 2.1–2.4)."""
 
 import os
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from morphix_core.core import RunContext
 
 
 def make_ctx(input_path, max_mb=15, output_path=None, start=None, end=None):
     """Create a RunContext without triggering ffmpeg binary search side-effects."""
-    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
-        ctx = RunContext(input_path, max_mb, output_path=output_path, start=start, end=end)
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
+        ctx = RunContext(
+            input_path, max_mb, output_path=output_path, start=start, end=end
+        )
     return ctx
 
 
 # ---------------------------------------------------------------------------
 # Requirement 2.1 – _{size}mb suffix inserted before extension
 # ---------------------------------------------------------------------------
+
 
 def test_suffix_inserted_before_extension(tmp_path):
     """_{size}mb is placed before the file extension, not appended after."""
@@ -47,6 +54,7 @@ def test_suffix_strips_trailing_zeros_for_integer_size(tmp_path):
 # Requirement 2.2 – .mp4 fallback when input has no extension
 # ---------------------------------------------------------------------------
 
+
 def test_mp4_fallback_when_no_extension(tmp_path):
     """Output uses .mp4 when the input file has no extension."""
     input_file = str(tmp_path / "rawvideo")
@@ -66,6 +74,7 @@ def test_mp4_fallback_preserves_suffix(tmp_path):
 # ---------------------------------------------------------------------------
 # Requirement 2.3 – Explicit output path is left unchanged
 # ---------------------------------------------------------------------------
+
 
 def test_explicit_output_path_unchanged(tmp_path):
     """When output_path is provided, _resolve_output_path must not modify it."""
@@ -91,6 +100,7 @@ def test_explicit_output_path_different_dir(tmp_path):
 # Requirement 2.4 – Default output placed in same directory as input
 # ---------------------------------------------------------------------------
 
+
 def test_output_in_same_dir_as_input(tmp_path):
     """Default output file is placed in the same directory as the input."""
     input_file = str(tmp_path / "myvideo.mp4")
@@ -114,12 +124,13 @@ def test_output_in_same_dir_nested(tmp_path):
 # Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
 # ---------------------------------------------------------------------------
 
-from morphix_core.core import compute_scaled_resolution, clamp_even
+from morphix_core.core import clamp_even, compute_scaled_resolution
 
 BPP_THRESHOLDS = {"low": 0.05, "medium": 0.07, "high": 0.10}
 
 
 # --- clamp_even ---
+
 
 def test_clamp_even_already_even():
     """Even integers are returned unchanged."""
@@ -137,33 +148,41 @@ def test_clamp_even_odd_rounds_down():
 
 def test_clamp_even_float_rounds_to_even():
     """Float values are rounded to nearest int then clamped to even."""
-    assert clamp_even(100.6) == 100   # rounds to 101, then -1 → 100
-    assert clamp_even(100.4) == 100   # rounds to 100, already even
-    assert clamp_even(101.5) == 102   # rounds to 102, already even
+    assert clamp_even(100.6) == 100  # rounds to 101, then -1 → 100
+    assert clamp_even(100.4) == 100  # rounds to 100, already even
+    assert clamp_even(101.5) == 102  # rounds to 102, already even
 
 
 # --- No scaling when bpp >= threshold (Requirement 3.3) ---
+
 
 def test_no_scaling_when_bpp_meets_low_threshold():
     """Returns None when current bpp >= low threshold (0.05)."""
     # 1920x1080 @ 30fps, bpp = 0.05 exactly → no scaling
     fps, w, h = 30, 1920, 1080
     video_bps = int(0.05 * fps * w * h)
-    assert compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["low"]) is None
+    assert (
+        compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["low"]) is None
+    )
 
 
 def test_no_scaling_when_bpp_meets_medium_threshold():
     """Returns None when current bpp >= medium threshold (0.07)."""
     fps, w, h = 30, 1280, 720
     video_bps = int(0.07 * fps * w * h)
-    assert compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["medium"]) is None
+    assert (
+        compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["medium"])
+        is None
+    )
 
 
 def test_no_scaling_when_bpp_meets_high_threshold():
     """Returns None when current bpp >= high threshold (0.10)."""
     fps, w, h = 60, 1920, 1080
     video_bps = int(0.10 * fps * w * h)
-    assert compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["high"]) is None
+    assert (
+        compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["high"]) is None
+    )
 
 
 def test_no_scaling_when_bpp_exceeds_threshold():
@@ -171,10 +190,13 @@ def test_no_scaling_when_bpp_exceeds_threshold():
     fps, w, h = 30, 1920, 1080
     # bpp = 0.20, well above any threshold
     video_bps = int(0.20 * fps * w * h)
-    assert compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["high"]) is None
+    assert (
+        compute_scaled_resolution(w, h, fps, video_bps, BPP_THRESHOLDS["high"]) is None
+    )
 
 
 # --- Proportional scaling when bpp < threshold (Requirement 3.4) ---
+
 
 def test_scaling_applied_when_bpp_below_threshold():
     """Returns scaled dimensions when current bpp < target bpp."""
@@ -216,6 +238,7 @@ def test_scaling_preserves_aspect_ratio():
 
 # --- Minimum height floor of 480 px (Requirement 3.5) ---
 
+
 def test_minimum_height_floor_enforced():
     """Height is never below 480 px even when scaling would produce less."""
     # Very low bitrate on a tall video forces height below 480 without the floor
@@ -237,7 +260,7 @@ def test_minimum_height_floor_exact_480():
     # We want scale such that h*scale < 480, so scale < 480/1080 ≈ 0.444
     # Use scale = 0.3 → video_bps = 0.3^2 * fps * w * h * target_bpp
     scale = 0.3
-    video_bps = int(scale ** 2 * fps * w * h * target_bpp)
+    video_bps = int(scale**2 * fps * w * h * target_bpp)
     result = compute_scaled_resolution(w, h, fps, video_bps, target_bpp)
     if result is not None:
         _, new_h = result
@@ -245,6 +268,7 @@ def test_minimum_height_floor_exact_480():
 
 
 # --- Even-integer rounding via clamp_even (Requirement 3.6) ---
+
 
 def test_scaled_dimensions_are_even():
     """Both width and height returned by compute_scaled_resolution are even integers."""
@@ -270,6 +294,7 @@ def test_scaled_dimensions_are_even_for_odd_source():
 
 # --- Returns None when computed dimensions < 2 px (Requirement 3.7) ---
 
+
 def test_returns_none_when_dimensions_too_small():
     """Returns None when computed dimensions would be < 2 px."""
     # Tiny video with very low bitrate
@@ -282,6 +307,7 @@ def test_returns_none_when_dimensions_too_small():
 
 
 # --- BPP threshold values (Requirement 3.2) ---
+
 
 def test_bpp_threshold_low_is_0_05():
     """Low quality threshold is 0.05: bpp=0.05 → no scale, bpp=0.049 → scale."""
@@ -320,7 +346,10 @@ def test_bpp_threshold_high_is_0_10():
 
 def make_ctx_with_probe(resolution=None, probe_streams=None):
     """Create a RunContext with a pre-populated probe dict for _compute_scaling tests."""
-    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
         ctx = RunContext("/fake/video.mp4", max_mb=15, resolution=resolution)
     ctx.probe = {"streams": probe_streams or []}
     ctx.video_bps = 1_000_000  # 1 Mbps default
@@ -328,6 +357,7 @@ def make_ctx_with_probe(resolution=None, probe_streams=None):
 
 
 # --- Valid WIDTHxHEIGHT sets scale_filter (Requirement 4.1) ---
+
 
 def test_valid_resolution_sets_scale_filter():
     """Valid '1280x720' sets scale_filter to 'scale=1280:720'."""
@@ -337,6 +367,7 @@ def test_valid_resolution_sets_scale_filter():
 
 
 # --- Even-clamping applied to odd dimensions (Requirement 4.2) ---
+
 
 def test_odd_dimensions_are_clamped_to_even():
     """'1281x721' is clamped to 'scale=1280:720'."""
@@ -360,6 +391,7 @@ def test_odd_height_only_clamped():
 
 
 # --- Invalid resolution strings leave scale_filter as None (Requirements 4.3, 4.4) ---
+
 
 def test_no_x_separator_leaves_scale_filter_none():
     """Resolution string without 'x' leaves scale_filter as None."""
@@ -411,6 +443,7 @@ def test_negative_dimension_leaves_scale_filter_none():
 
 
 # --- Manual override bypasses auto-scaling (Requirement 4.1) ---
+
 
 def test_manual_override_bypasses_auto_scaling():
     """Manual resolution override ignores probe data and skips auto-scaling logic."""
@@ -465,21 +498,26 @@ def test_no_resolution_uses_auto_scaling():
 
 from morphix_core.core import (
     detect_cuda,
-    detect_amd,
-    detect_intel,
     detect_device_info,
     get_available_devices,
     resolve_device_info,
 )
 
-
 # --- detect_cuda (Requirement 5.1) ---
+
 
 def test_detect_cuda_returns_true_when_nvidia_smi_exits_0_with_output():
     """NVIDIA detected when nvidia-smi exits 0 with GPU output."""
-    mock_result = type("R", (), {"returncode": 0, "stdout": "GPU 0: NVIDIA GeForce RTX 3080\n"})()
-    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result):
+    mock_result = type(
+        "R", (), {"returncode": 0, "stdout": "GPU 0: NVIDIA GeForce RTX 3080\n"}
+    )()
+    with (
+        patch(
+            "morphix_core.gpu_detection.shutil.which",
+            return_value="/usr/bin/nvidia-smi",
+        ),
+        patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result),
+    ):
         assert detect_cuda() is True
 
 
@@ -492,27 +530,46 @@ def test_detect_cuda_returns_false_when_nvidia_smi_not_on_path():
 def test_detect_cuda_returns_false_when_nvidia_smi_exits_nonzero():
     """NVIDIA not detected when nvidia-smi exits with non-zero code."""
     mock_result = type("R", (), {"returncode": 1, "stdout": ""})()
-    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result):
+    with (
+        patch(
+            "morphix_core.gpu_detection.shutil.which",
+            return_value="/usr/bin/nvidia-smi",
+        ),
+        patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result),
+    ):
         assert detect_cuda() is False
 
 
 def test_detect_cuda_returns_false_when_nvidia_smi_exits_0_but_no_output():
     """NVIDIA not detected when nvidia-smi exits 0 but produces no output."""
     mock_result = type("R", (), {"returncode": 0, "stdout": ""})()
-    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result):
+    with (
+        patch(
+            "morphix_core.gpu_detection.shutil.which",
+            return_value="/usr/bin/nvidia-smi",
+        ),
+        patch("morphix_core.gpu_detection.subprocess.run", return_value=mock_result),
+    ):
         assert detect_cuda() is False
 
 
 def test_detect_cuda_returns_false_on_oserror():
     """NVIDIA detection returns False (not raises) when subprocess raises OSError."""
-    with patch("morphix_core.gpu_detection.shutil.which", return_value="/usr/bin/nvidia-smi"), \
-         patch("morphix_core.gpu_detection.subprocess.run", side_effect=OSError("not found")):
+    with (
+        patch(
+            "morphix_core.gpu_detection.shutil.which",
+            return_value="/usr/bin/nvidia-smi",
+        ),
+        patch(
+            "morphix_core.gpu_detection.subprocess.run",
+            side_effect=OSError("not found"),
+        ),
+    ):
         assert detect_cuda() is False
 
 
 # --- detect_device_info (Requirements 5.1–5.6) ---
+
 
 def test_detect_device_info_returns_nvidia_when_cuda_detected():
     """detect_device_info returns ('NVIDIA GPU', 'cuda') when CUDA is available."""
@@ -524,8 +581,10 @@ def test_detect_device_info_returns_nvidia_when_cuda_detected():
 
 def test_detect_device_info_returns_amd_when_nvidia_fails_amd_succeeds():
     """detect_device_info returns ('AMD GPU', 'amf') when NVIDIA fails but AMD succeeds."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=True):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=True),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "AMD GPU"
     assert hwaccel == "amf"
@@ -533,9 +592,11 @@ def test_detect_device_info_returns_amd_when_nvidia_fails_amd_succeeds():
 
 def test_detect_device_info_returns_intel_when_nvidia_and_amd_fail():
     """detect_device_info returns ('Intel GPU', 'qsv') when NVIDIA and AMD fail but Intel succeeds."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=True):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=True),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "Intel GPU"
     assert hwaccel == "qsv"
@@ -543,9 +604,11 @@ def test_detect_device_info_returns_intel_when_nvidia_and_amd_fail():
 
 def test_detect_device_info_returns_cpu_when_all_fail():
     """detect_device_info returns ('CPU', None) when all vendor detections fail."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=False),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "CPU"
     assert hwaccel is None
@@ -553,10 +616,15 @@ def test_detect_device_info_returns_cpu_when_all_fail():
 
 # --- Exception swallowing (Requirement 5.7) ---
 
+
 def test_detect_device_info_swallows_nvidia_exception_falls_back_to_amd():
     """Exception from NVIDIA detection is caught; AMD is tried next."""
-    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=RuntimeError("boom")), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=True):
+    with (
+        patch(
+            "morphix_core.gpu_detection.detect_cuda", side_effect=RuntimeError("boom")
+        ),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=True),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "AMD GPU"
     assert hwaccel == "amf"
@@ -564,9 +632,13 @@ def test_detect_device_info_swallows_nvidia_exception_falls_back_to_amd():
 
 def test_detect_device_info_swallows_amd_exception_falls_back_to_intel():
     """Exception from AMD detection is caught; Intel is tried next."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", side_effect=RuntimeError("boom")), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=True):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch(
+            "morphix_core.gpu_detection.detect_amd", side_effect=RuntimeError("boom")
+        ),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=True),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "Intel GPU"
     assert hwaccel == "qsv"
@@ -574,9 +646,13 @@ def test_detect_device_info_swallows_amd_exception_falls_back_to_intel():
 
 def test_detect_device_info_swallows_intel_exception_falls_back_to_cpu():
     """Exception from Intel detection is caught; CPU fallback is used."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", side_effect=RuntimeError("boom")):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch(
+            "morphix_core.gpu_detection.detect_intel", side_effect=RuntimeError("boom")
+        ),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "CPU"
     assert hwaccel is None
@@ -584,9 +660,19 @@ def test_detect_device_info_swallows_intel_exception_falls_back_to_cpu():
 
 def test_detect_device_info_swallows_all_exceptions_returns_cpu():
     """All vendor exceptions are caught; CPU fallback is returned without propagating."""
-    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=Exception("nvidia error")), \
-         patch("morphix_core.gpu_detection.detect_amd", side_effect=Exception("amd error")), \
-         patch("morphix_core.gpu_detection.detect_intel", side_effect=Exception("intel error")):
+    with (
+        patch(
+            "morphix_core.gpu_detection.detect_cuda",
+            side_effect=Exception("nvidia error"),
+        ),
+        patch(
+            "morphix_core.gpu_detection.detect_amd", side_effect=Exception("amd error")
+        ),
+        patch(
+            "morphix_core.gpu_detection.detect_intel",
+            side_effect=Exception("intel error"),
+        ),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "CPU"
     assert hwaccel is None
@@ -594,20 +680,25 @@ def test_detect_device_info_swallows_all_exceptions_returns_cpu():
 
 # --- get_available_devices (Requirement 5.8) ---
 
+
 def test_get_available_devices_always_ends_with_cpu():
     """get_available_devices() always ends with ('cpu', 'CPU')."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=False),
+    ):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU")
 
 
 def test_get_available_devices_ends_with_cpu_when_nvidia_present():
     """get_available_devices() ends with ('cpu', 'CPU') even when NVIDIA is detected."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=True), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=True),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=False),
+    ):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU")
     assert ("nvidia", "NVIDIA GPU") in devices
@@ -615,9 +706,11 @@ def test_get_available_devices_ends_with_cpu_when_nvidia_present():
 
 def test_get_available_devices_gpu_first_cpu_last():
     """GPU entries appear before CPU in get_available_devices()."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=True), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=True),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=False),
+    ):
         devices = get_available_devices()
     keys = [k for k, _ in devices]
     assert keys.index("nvidia") < keys.index("cpu")
@@ -625,23 +718,28 @@ def test_get_available_devices_gpu_first_cpu_last():
 
 def test_get_available_devices_only_cpu_when_no_gpu():
     """get_available_devices() returns only [('cpu', 'CPU')] when no GPU detected."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=False),
+    ):
         devices = get_available_devices()
     assert devices == [("cpu", "CPU")]
 
 
 def test_get_available_devices_swallows_exceptions_still_ends_with_cpu():
     """Exceptions from GPU detection are swallowed; CPU is still last entry."""
-    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=Exception("err")), \
-         patch("morphix_core.gpu_detection.detect_amd", side_effect=Exception("err")), \
-         patch("morphix_core.gpu_detection.detect_intel", side_effect=Exception("err")):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", side_effect=Exception("err")),
+        patch("morphix_core.gpu_detection.detect_amd", side_effect=Exception("err")),
+        patch("morphix_core.gpu_detection.detect_intel", side_effect=Exception("err")),
+    ):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU")
 
 
 # --- resolve_device_info (Requirement 5.9) ---
+
 
 def test_resolve_device_info_cpu_preference_returns_cpu():
     """resolve_device_info('cpu') always returns ('CPU', None)."""
@@ -700,9 +798,11 @@ def test_resolve_device_info_intel_unavailable_falls_back_to_cpu():
 
 def test_resolve_device_info_unknown_key_uses_auto_detection():
     """resolve_device_info with unknown key falls back to detect_device_info()."""
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=False),
+    ):
         label, hwaccel = resolve_device_info("unknown_device")
     assert label == "CPU"
     assert hwaccel is None
@@ -726,11 +826,13 @@ from morphix_core.core import find_ffmpeg_binaries
 
 def _make_isfile(present_dirs):
     """Return an os.path.isfile mock that returns True only for paths under present_dirs."""
+
     def isfile(path):
         for d in present_dirs:
             if path.startswith(d + os.sep) or path.startswith(d + "/"):
                 return True
         return False
+
     return isfile
 
 
@@ -740,8 +842,10 @@ def test_find_ffmpeg_binaries_returns_bundled_when_meipass_has_both(tmp_path):
     ffmpeg_exe = os.path.join(bundle, "ffmpeg.exe")
     ffprobe_exe = os.path.join(bundle, "ffprobe.exe")
 
-    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
-         patch("morphix_core.ffmpeg_utils.os.path.isfile") as mock_isfile:
+    with (
+        patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
+        patch("morphix_core.ffmpeg_utils.os.path.isfile") as mock_isfile,
+    ):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = "/some/python.exe"
         mock_isfile.side_effect = lambda p: p in (ffmpeg_exe, ffprobe_exe)
@@ -768,8 +872,10 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffprobe(tmp_path):
             return True  # exe dir has both
         return False
 
-    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
-         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
+    with (
+        patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
+        patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile),
+    ):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
 
@@ -794,8 +900,10 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffmpeg(tmp_path):
             return True
         return False
 
-    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
-         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
+    with (
+        patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
+        patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile),
+    ):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
 
@@ -806,9 +914,14 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffmpeg(tmp_path):
 
 def test_find_ffmpeg_binaries_falls_back_to_path_when_no_candidate_has_both():
     """Falls back to ('ffmpeg', 'ffprobe', 'path') when no candidate directory has both binaries."""
-    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
-         patch("morphix_core.ffmpeg_utils.os.path.isfile", return_value=False), \
-         patch("morphix_core.ffmpeg_utils.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"):
+    with (
+        patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
+        patch("morphix_core.ffmpeg_utils.os.path.isfile", return_value=False),
+        patch(
+            "morphix_core.ffmpeg_utils.shutil.which",
+            side_effect=lambda name: f"/usr/bin/{name}",
+        ),
+    ):
         mock_sys._MEIPASS = None
         mock_sys.executable = "/usr/bin/python3"
 
@@ -819,9 +932,11 @@ def test_find_ffmpeg_binaries_falls_back_to_path_when_no_candidate_has_both():
 
 def test_find_ffmpeg_binaries_returns_missing_when_no_binaries_anywhere():
     """Returns (None, None, 'missing') when no bundled or PATH binaries exist."""
-    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
-         patch("morphix_core.ffmpeg_utils.os.path.isfile", return_value=False), \
-         patch("morphix_core.ffmpeg_utils.shutil.which", return_value=None):
+    with (
+        patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
+        patch("morphix_core.ffmpeg_utils.os.path.isfile", return_value=False),
+        patch("morphix_core.ffmpeg_utils.shutil.which", return_value=None),
+    ):
         mock_sys._MEIPASS = None
         mock_sys.executable = "/usr/bin/python3"
 
@@ -844,8 +959,10 @@ def test_find_ffmpeg_binaries_meipass_checked_first(tmp_path):
     def isfile(p):
         return p in (ffmpeg_bundle, ffprobe_bundle, ffmpeg_exe, ffprobe_exe)
 
-    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
-         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
+    with (
+        patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
+        patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile),
+    ):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
 
@@ -863,8 +980,10 @@ def test_find_ffmpeg_binaries_no_meipass_uses_exe_dir(tmp_path):
     def isfile(p):
         return p in (ffmpeg_exe, ffprobe_exe)
 
-    with patch("morphix_core.ffmpeg_utils.sys") as mock_sys, \
-         patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile):
+    with (
+        patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
+        patch("morphix_core.ffmpeg_utils.os.path.isfile", side_effect=isfile),
+    ):
         # No _MEIPASS attribute at all
         del mock_sys._MEIPASS
         mock_sys.executable = str(tmp_path / "exedir" / "python.exe")
@@ -880,19 +999,24 @@ def test_find_ffmpeg_binaries_no_meipass_uses_exe_dir(tmp_path):
 # ---------------------------------------------------------------------------
 
 import io
-from unittest.mock import MagicMock, call
 
 
 def make_ctx_for_progress(progress=True, progress_cb=None, duration=100.0):
     """Create a RunContext wired for progress tests (no real ffmpeg needed)."""
-    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
-        ctx = RunContext("/fake/video.mp4", max_mb=15, progress=progress, progress_cb=progress_cb)
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
+        ctx = RunContext(
+            "/fake/video.mp4", max_mb=15, progress=progress, progress_cb=progress_cb
+        )
     ctx.duration = duration
     ctx.log_dir = "/tmp/fake_log"
     return ctx
 
 
 # --- _iter_progress_seconds: parses out_time_ms lines (Requirement 7.1) ---
+
 
 def test_iter_progress_seconds_parses_out_time_ms():
     """_iter_progress_seconds yields N/1_000_000.0 for out_time_ms=N lines."""
@@ -925,10 +1049,10 @@ def test_iter_progress_seconds_handles_multiple_lines():
     stream = io.BytesIO(data)
     results = list(ctx._iter_progress_seconds(stream))
     assert len(results) == 4
-    assert results[0][0] is None       # frame=10
-    assert results[1][0] == pytest.approx(2.0)   # out_time_ms=2000000
-    assert results[2][0] is None       # bitrate=...
-    assert results[3][0] == pytest.approx(4.0)   # out_time_ms=4000000
+    assert results[0][0] is None  # frame=10
+    assert results[1][0] == pytest.approx(2.0)  # out_time_ms=2000000
+    assert results[2][0] is None  # bitrate=...
+    assert results[3][0] == pytest.approx(4.0)  # out_time_ms=4000000
 
 
 def test_iter_progress_seconds_zero_value():
@@ -941,10 +1065,13 @@ def test_iter_progress_seconds_zero_value():
 
 # --- Percentage computation: (elapsed_s / duration_s) * 100 (Requirement 7.2) ---
 
+
 def test_render_progress_computes_correct_percentage():
     """_render_progress computes pct = (elapsed_s / duration_s) * 100."""
     calls = []
-    ctx = make_ctx_for_progress(progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=200.0)
+    ctx = make_ctx_for_progress(
+        progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=200.0
+    )
     ctx._render_progress(50.0, None, "PASS1")
     assert len(calls) == 1
     assert calls[0][0] == pytest.approx(25.0)
@@ -953,7 +1080,9 @@ def test_render_progress_computes_correct_percentage():
 def test_render_progress_100_percent_at_end():
     """_render_progress yields 100% when elapsed equals duration."""
     calls = []
-    ctx = make_ctx_for_progress(progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=60.0)
+    ctx = make_ctx_for_progress(
+        progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=60.0
+    )
     ctx._render_progress(60.0, None, "PASS2")
     assert calls[0][0] == pytest.approx(100.0)
 
@@ -961,17 +1090,22 @@ def test_render_progress_100_percent_at_end():
 def test_render_progress_clamps_above_100():
     """_render_progress clamps percentage to 100 even if elapsed > duration."""
     calls = []
-    ctx = make_ctx_for_progress(progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=60.0)
+    ctx = make_ctx_for_progress(
+        progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=60.0
+    )
     ctx._render_progress(70.0, None, "PASS1")
     assert calls[0][0] == pytest.approx(100.0)
 
 
 # --- progress_cb called with correct phase labels (Requirement 7.3) ---
 
+
 def test_progress_cb_called_with_pass1_label():
     """progress_cb receives 'PASS1' as the phase argument during pass 1."""
     calls = []
-    ctx = make_ctx_for_progress(progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=100.0)
+    ctx = make_ctx_for_progress(
+        progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=100.0
+    )
     ctx._render_progress(50.0, None, "PASS1")
     assert calls[0][1] == "PASS1"
 
@@ -979,12 +1113,15 @@ def test_progress_cb_called_with_pass1_label():
 def test_progress_cb_called_with_pass2_label():
     """progress_cb receives 'PASS2' as the phase argument during pass 2."""
     calls = []
-    ctx = make_ctx_for_progress(progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=100.0)
+    ctx = make_ctx_for_progress(
+        progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=100.0
+    )
     ctx._render_progress(50.0, None, "PASS2")
     assert calls[0][1] == "PASS2"
 
 
 # --- stdout fallback when progress_cb is None (Requirement 7.4) ---
+
 
 def test_stdout_fallback_when_progress_cb_is_none(capsys):
     """When progress_cb is None, progress is written to stdout."""
@@ -1004,12 +1141,15 @@ def test_stdout_fallback_not_called_when_progress_cb_set(capsys):
 
 # --- No stderr parsing when progress is disabled (Requirement 7.5) ---
 
+
 def test_run_ffmpeg_simple_used_when_progress_disabled():
     """When progress=False, _run_ffmpeg_simple is called instead of _run_ffmpeg_with_progress."""
     ctx = make_ctx_for_progress(progress=False)
     stream = MagicMock()
-    with patch.object(ctx, "_run_ffmpeg_simple") as mock_simple, \
-         patch.object(ctx, "_run_ffmpeg_with_progress") as mock_with_progress:
+    with (
+        patch.object(ctx, "_run_ffmpeg_simple") as mock_simple,
+        patch.object(ctx, "_run_ffmpeg_with_progress") as mock_with_progress,
+    ):
         ctx._run_ffmpeg(stream, "PASS1")
     mock_simple.assert_called_once_with(stream)
     mock_with_progress.assert_not_called()
@@ -1019,8 +1159,10 @@ def test_run_ffmpeg_with_progress_used_when_progress_enabled():
     """When progress=True, _run_ffmpeg_with_progress is called."""
     ctx = make_ctx_for_progress(progress=True)
     stream = MagicMock()
-    with patch.object(ctx, "_run_ffmpeg_with_progress") as mock_with_progress, \
-         patch.object(ctx, "_run_ffmpeg_simple") as mock_simple:
+    with (
+        patch.object(ctx, "_run_ffmpeg_with_progress") as mock_with_progress,
+        patch.object(ctx, "_run_ffmpeg_simple") as mock_simple,
+    ):
         ctx._run_ffmpeg(stream, "PASS2")
     mock_with_progress.assert_called_once_with(stream, "PASS2")
     mock_simple.assert_not_called()
@@ -1034,7 +1176,10 @@ def test_run_ffmpeg_with_progress_used_when_progress_enabled():
 
 def make_ctx_for_logs(input_path):
     """Create a RunContext for log-related tests without triggering ffmpeg search."""
-    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
         ctx = RunContext(input_path, max_mb=15)
     return ctx
 
@@ -1122,7 +1267,10 @@ import ffmpeg as ffmpeg_lib
 def make_ctx_for_error_log(tmp_path):
     """Create a RunContext with log_dir set to a real temp directory."""
     input_file = str(tmp_path / "video.mp4")
-    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
         ctx = RunContext(input_file, max_mb=15)
     ctx.log_dir = str(tmp_path / ".output")
     os.makedirs(ctx.log_dir, exist_ok=True)
@@ -1135,6 +1283,7 @@ def _make_ffmpeg_error(stderr_bytes):
 
 
 # --- Requirement 9.1: stderr bytes written to ffmpeg-error.log ---
+
 
 def test_write_ffmpeg_error_writes_stderr_bytes(tmp_path):
     """stderr bytes from the exception are written to .output/ffmpeg-error.log."""
@@ -1149,6 +1298,7 @@ def test_write_ffmpeg_error_writes_stderr_bytes(tmp_path):
 
 # --- Requirement 9.2: fallback message when stderr is None ---
 
+
 def test_write_ffmpeg_error_fallback_when_stderr_is_none(tmp_path):
     """Fallback message is written when exc.stderr is None."""
     ctx = make_ctx_for_error_log(tmp_path)
@@ -1159,6 +1309,7 @@ def test_write_ffmpeg_error_fallback_when_stderr_is_none(tmp_path):
 
 
 # --- Requirement 9.2: fallback message when stderr is empty bytes ---
+
 
 def test_write_ffmpeg_error_fallback_when_stderr_is_empty_bytes(tmp_path):
     """Fallback message is written when exc.stderr is empty bytes b''."""
@@ -1171,6 +1322,7 @@ def test_write_ffmpeg_error_fallback_when_stderr_is_empty_bytes(tmp_path):
 
 # --- Requirement 9.3: error log path printed to stdout ---
 
+
 def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, capsys):
     """The path to the error log is printed to stdout."""
     ctx = make_ctx_for_error_log(tmp_path)
@@ -1182,6 +1334,7 @@ def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, capsys):
 
 
 # --- Requirement 9.4: exception is re-raised by _run_ffmpeg ---
+
 
 def test_run_ffmpeg_reraises_after_writing_error_log(tmp_path):
     """_run_ffmpeg re-raises as RuntimeError after calling _write_ffmpeg_error."""
@@ -1201,6 +1354,7 @@ def test_run_ffmpeg_reraises_after_writing_error_log(tmp_path):
 # ---------------------------------------------------------------------------
 
 import subprocess as _subprocess
+
 from morphix_core.core import popen_no_window_kwargs
 
 
@@ -1235,6 +1389,7 @@ def test_popen_no_window_kwargs_create_no_window_value_is_correct():
 # ---------------------------------------------------------------------------
 # Trim Feature Tests – Requirements Trim-5 through Trim-8
 # ---------------------------------------------------------------------------
+
 
 def test_trim_disabled_when_no_start():
     """Trimming is not active when start is None."""
@@ -1282,7 +1437,10 @@ def test_estimated_segment_mb():
 
 def test_probe_media_uses_trim_duration_for_bitrate():
     """Bitrate calculation uses trimmed duration when trimming is active."""
-    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
         ctx = RunContext("/fake/video.mp4", max_mb=15, start=10.0, end=60.0)
 
     ctx.probe = {

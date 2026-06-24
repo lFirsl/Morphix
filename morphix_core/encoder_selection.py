@@ -12,15 +12,18 @@ ENCODER_PRIORITY = [
 ]
 
 OPENH264_WARNING = (
-    "No GPU or licensed ffmpeg detected \u2014 falling back to OpenH264, which produces "
-    "lower quality output. For better results, download ffmpeg from "
-    "https://ffmpeg.org/download.html and place ffmpeg.exe in the same folder as Morphix."
+    "No GPU or licensed ffmpeg detected \u2014 falling back to OpenH264,"
+    " which produces lower quality output. For better results, download"
+    " ffmpeg from https://ffmpeg.org/download.html and place ffmpeg.exe"
+    " in the same folder as Morphix."
 )
 
 SAFETY_MARGIN = 0.85  # For single-pass encoders, target 85% of calculated bitrate.
 
 
-def select_encoder(available_encoders: set, device_preference: str, detected_device: str | None) -> tuple[str, str]:
+def select_encoder(
+    available_encoders: set, device_preference: str, detected_device: str | None
+) -> tuple[str, str]:
     """Select the best encoder based on availability and device.
 
     Args:
@@ -45,5 +48,6 @@ def select_encoder(available_encoders: set, device_preference: str, detected_dev
         return encoder_name, strategy
 
     raise RuntimeError(
-        "No compatible H.264 encoder found. Install ffmpeg with libx264 or use a supported GPU."
+        "No compatible H.264 encoder found. Install ffmpeg with "
+        "libx264 or use a supported GPU."
     )

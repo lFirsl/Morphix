@@ -1,6 +1,5 @@
 """Tests for check_trim_values (Requirements Trim-1 through Trim-4)."""
 
-import pytest
 from morphix_core.validation import check_trim_values
 
 

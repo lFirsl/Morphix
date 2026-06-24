@@ -5,10 +5,24 @@ import sys
 
 import ffmpeg
 
-from morphix_core.ffmpeg_utils import find_ffmpeg_binaries, ffprobe_media, popen_no_window_kwargs, detect_available_encoders
+from morphix_core.bitrate import (
+    clamp_even,
+    compute_scaled_resolution,
+    parse_fps,
+    target_kbps_for_size_mb,
+)
+from morphix_core.encoder_selection import (
+    OPENH264_WARNING,
+    SAFETY_MARGIN,
+    select_encoder,
+)
+from morphix_core.ffmpeg_utils import (
+    detect_available_encoders,
+    ffprobe_media,
+    find_ffmpeg_binaries,
+    popen_no_window_kwargs,
+)
 from morphix_core.gpu_detection import detect_cuda, resolve_device_info
-from morphix_core.encoder_selection import select_encoder, OPENH264_WARNING, SAFETY_MARGIN
-from morphix_core.bitrate import target_kbps_for_size_mb, compute_scaled_resolution, clamp_even, parse_fps
 
 
 class RunContext:
@@ -46,7 +60,9 @@ class RunContext:
         # Trim fields.
         self.trim_start = start
         self.trim_end = end
-        self.trim_duration = (end - start) if (start is not None and end is not None) else 0.0
+        self.trim_duration = (
+            (end - start) if (start is not None and end is not None) else 0.0
+        )
         self.trimming = start is not None and end is not None
 
         # Derived values populated during execution.
@@ -80,9 +96,12 @@ class RunContext:
         if self.encoder_override and self.encoder_override != "Auto":
             # Manual override — look up strategy from priority list.
             from morphix_core.encoder_selection import ENCODER_PRIORITY
+
             strategy_map = {name: strategy for name, strategy, _ in ENCODER_PRIORITY}
             self.encoder_name = self.encoder_override
-            self.encoder_strategy = strategy_map.get(self.encoder_override, "single_pass_cbr")
+            self.encoder_strategy = strategy_map.get(
+                self.encoder_override, "single_pass_cbr"
+            )
         else:
             self.encoder_name, self.encoder_strategy = select_encoder(
                 available, self.device_preference, self.detected_device
@@ -97,7 +116,11 @@ class RunContext:
 
         # Merge trim -ss/-t into input_kwargs when trimming is active.
         if self.trimming:
-            self.input_kwargs = {**self.input_kwargs, "ss": str(self.trim_start), "t": str(self.trim_duration)}
+            self.input_kwargs = {
+                **self.input_kwargs,
+                "ss": str(self.trim_start),
+                "t": str(self.trim_duration),
+            }
 
         self._compute_scaling()
 
@@ -105,7 +128,11 @@ class RunContext:
         # CRF encode (quality-preserving, no bitrate target).
         if self.trimming and self._estimated_segment_mb() <= self.max_mb:
             if self.encoder_name in ("libx264", "h264_nvenc"):
-                print(f"Trimmed segment (~{self._estimated_segment_mb():.1f}MB) fits within {self.max_mb}MB — using CRF encode.")
+                est = self._estimated_segment_mb()
+                print(
+                    f"Trimmed segment (~{est:.1f}MB) fits within "
+                    f"{self.max_mb}MB — using CRF encode."
+                )
                 return self._run_crf_encode()
 
         # Dispatch to the appropriate encoding strategy.
@@ -126,7 +153,9 @@ class RunContext:
         crf_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         crf_video = crf_input.video
         if self.scale_filter:
-            crf_video = crf_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+            crf_video = crf_video.filter_(
+                "scale", *self.scale_filter.split("=", 1)[1].split(":")
+            )
         if self.encoder_name == "h264_nvenc":
             vcodec_kwargs = {"vcodec": "h264_nvenc", "rc": "constqp", "qp": 18}
         else:
@@ -134,12 +163,19 @@ class RunContext:
         if self.has_audio:
             crf_audio = crf_input.audio
             crf_stream = ffmpeg.output(
-                crf_video, crf_audio, self.output_path,
-                **vcodec_kwargs, acodec="aac", audio_bitrate="128k",
+                crf_video,
+                crf_audio,
+                self.output_path,
+                **vcodec_kwargs,
+                acodec="aac",
+                audio_bitrate="128k",
             )
         else:
             crf_stream = ffmpeg.output(
-                crf_video, self.output_path, **vcodec_kwargs, an=None,
+                crf_video,
+                self.output_path,
+                **vcodec_kwargs,
+                an=None,
             )
         self._run_ffmpeg(crf_stream, "CRF")
         return self.output_path
@@ -152,7 +188,9 @@ class RunContext:
         pass1_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         pass1_video = pass1_input.video
         if self.scale_filter:
-            pass1_video = pass1_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+            pass1_video = pass1_video.filter_(
+                "scale", *self.scale_filter.split("=", 1)[1].split(":")
+            )
         self._run_ffmpeg(
             ffmpeg.output(
                 pass1_video,
@@ -163,7 +201,8 @@ class RunContext:
                 **{"pass": 1},
                 **{"passlogfile": self.passlog_path},
                 an=None,
-                f="mp4"),
+                f="mp4",
+            ),
             "PASS1",
         )
 
@@ -171,7 +210,9 @@ class RunContext:
         pass2_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         pass2_video = pass2_input.video
         if self.scale_filter:
-            pass2_video = pass2_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+            pass2_video = pass2_video.filter_(
+                "scale", *self.scale_filter.split("=", 1)[1].split(":")
+            )
         if self.has_audio:
             pass2_audio = pass2_input.audio
             pass2_stream = ffmpeg.output(
@@ -207,7 +248,9 @@ class RunContext:
         enc_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         enc_video = enc_input.video
         if self.scale_filter:
-            enc_video = enc_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+            enc_video = enc_video.filter_(
+                "scale", *self.scale_filter.split("=", 1)[1].split(":")
+            )
         output_kwargs = {
             "vcodec": "h264_nvenc",
             "preset": "p4",
@@ -218,10 +261,18 @@ class RunContext:
         }
         if self.has_audio:
             enc_audio = enc_input.audio
-            stream = ffmpeg.output(enc_video, enc_audio, self.output_path,
-                                   **output_kwargs, acodec="aac", audio_bitrate="128k")
+            stream = ffmpeg.output(
+                enc_video,
+                enc_audio,
+                self.output_path,
+                **output_kwargs,
+                acodec="aac",
+                audio_bitrate="128k",
+            )
         else:
-            stream = ffmpeg.output(enc_video, self.output_path, **output_kwargs, an=None)
+            stream = ffmpeg.output(
+                enc_video, self.output_path, **output_kwargs, an=None
+            )
         self._run_ffmpeg(stream, "NVENC")
         return self.output_path
 
@@ -235,7 +286,10 @@ class RunContext:
         if output_mb > self.max_mb:
             reduction = self.max_mb / output_mb * 0.95
             retry_kbps = int(safe_kbps * reduction)
-            print(f"Output {output_mb:.1f}MB exceeds {self.max_mb}MB — retrying at {retry_kbps}k")
+            print(
+                f"Output {output_mb:.1f}MB exceeds "
+                f"{self.max_mb}MB — retrying at {retry_kbps}k"
+            )
             output = self._run_single_pass(retry_kbps)
 
         return output
@@ -245,17 +299,27 @@ class RunContext:
         enc_input = ffmpeg.input(self.input_path, **self.input_kwargs)
         enc_video = enc_input.video
         if self.scale_filter:
-            enc_video = enc_video.filter_("scale", *self.scale_filter.split("=", 1)[1].split(":"))
+            enc_video = enc_video.filter_(
+                "scale", *self.scale_filter.split("=", 1)[1].split(":")
+            )
         output_kwargs = {
             "vcodec": self.encoder_name,
             "b:v": f"{kbps}k",
         }
         if self.has_audio:
             enc_audio = enc_input.audio
-            stream = ffmpeg.output(enc_video, enc_audio, self.output_path,
-                                   **output_kwargs, acodec="aac", audio_bitrate="128k")
+            stream = ffmpeg.output(
+                enc_video,
+                enc_audio,
+                self.output_path,
+                **output_kwargs,
+                acodec="aac",
+                audio_bitrate="128k",
+            )
         else:
-            stream = ffmpeg.output(enc_video, self.output_path, **output_kwargs, an=None)
+            stream = ffmpeg.output(
+                enc_video, self.output_path, **output_kwargs, an=None
+            )
         self._run_ffmpeg(stream, "ENCODE")
         return self.output_path
 
@@ -267,13 +331,16 @@ class RunContext:
         if self.output_path:
             return
         size_label = f"{self.max_mb:g}"
-        self.output_path = os.path.join(self.input_dir, f"{base_name}_{size_label}mb{ext}")
+        self.output_path = os.path.join(
+            self.input_dir, f"{base_name}_{size_label}mb{ext}"
+        )
 
     def _ensure_ffmpeg_available(self):
         # Fail early with a clear error if ffmpeg/ffprobe are missing.
         if not self.ffmpeg_path or not self.ffprobe_path:
             raise FileNotFoundError(
-                "ffmpeg/ffprobe not found. Place them in a 'ffmpeg' folder next to the app "
+                "ffmpeg/ffprobe not found. Place them in a "
+                "'ffmpeg' folder next to the app "
                 "or install them and add to PATH."
             )
 
@@ -283,10 +350,13 @@ class RunContext:
         full_duration = float(self.probe["format"]["duration"])
         # Use trim duration for bitrate calc and progress when trimming.
         self.duration = self.trim_duration if self.trimming else full_duration
-        self.video_kbps = target_kbps_for_size_mb(self.max_mb, self.duration, audio_kbps=128)
+        self.video_kbps = target_kbps_for_size_mb(
+            self.max_mb, self.duration, audio_kbps=128
+        )
         self.video_bps = self.video_kbps * 1000
         self.has_audio = any(
-            stream.get("codec_type") == "audio" for stream in self.probe.get("streams", [])
+            stream.get("codec_type") == "audio"
+            for stream in self.probe.get("streams", [])
         )
 
     def _configure_hwaccel(self):
@@ -302,10 +372,21 @@ class RunContext:
 
     def _compute_scaling(self):
         # Fetch video stream info for auto-scaling decisions.
-        vstream = next((s for s in self.probe.get("streams", []) if s.get("codec_type") == "video"), None)
+        vstream = next(
+            (
+                s
+                for s in self.probe.get("streams", [])
+                if s.get("codec_type") == "video"
+            ),
+            None,
+        )
         width = int(vstream.get("width", 0)) if vstream else 0
         height = int(vstream.get("height", 0)) if vstream else 0
-        fps = parse_fps(vstream.get("avg_frame_rate") or vstream.get("r_frame_rate")) if vstream else None
+        fps = (
+            parse_fps(vstream.get("avg_frame_rate") or vstream.get("r_frame_rate"))
+            if vstream
+            else None
+        )
 
         # Decide whether to apply a scale filter.
         scale_filter = None
@@ -324,10 +405,16 @@ class RunContext:
             # Auto-scale based on bitrate-derived bpp thresholds.
             bpp_targets = {"low": 0.05, "medium": 0.07, "high": 0.10}
             target_bpp = bpp_targets.get(self.quality, 0.07)
-            scaled = compute_scaled_resolution(width, height, fps, self.video_bps, target_bpp, min_height=480)
+            scaled = compute_scaled_resolution(
+                width, height, fps, self.video_bps, target_bpp, min_height=480
+            )
             if scaled:
                 scale_filter = f"scale={scaled[0]}:{scaled[1]}"
-                print(f"Auto-scaling to {scaled[0]}x{scaled[1]} for quality '{self.quality}'.")
+                w, h = scaled[0], scaled[1]
+                print(
+                    f"Auto-scaling to {w}x{h} for "
+                    f"quality '{self.quality}'."
+                )
 
         self.scale_filter = scale_filter
 
@@ -379,10 +466,22 @@ class RunContext:
         # Unknown error — extract first meaningful line.
         for line in stderr.decode(errors="replace").splitlines():
             line = line.strip()
-            if line and not line.startswith(("frame=", "fps=", "stream_", "bitrate=",
-                                            "total_size=", "out_time", "dup_frames",
-                                            "drop_frames", "speed=", "progress=",
-                                            "Qavg:", "Press [q]")):
+            if line and not line.startswith(
+                (
+                    "frame=",
+                    "fps=",
+                    "stream_",
+                    "bitrate=",
+                    "total_size=",
+                    "out_time",
+                    "dup_frames",
+                    "drop_frames",
+                    "speed=",
+                    "progress=",
+                    "Qavg:",
+                    "Press [q]",
+                )
+            ):
                 if "Error" in line or "error" in line or "failed" in line:
                     return f"FFmpeg error: {line}"
         return "An unknown FFmpeg error has occurred. Check the error log for details."
@@ -391,7 +490,9 @@ class RunContext:
         # Enable progress reporting and parse out_time_ms from stderr.
         bar = self._maybe_create_progress_bar(phase)
         stream = stream.global_args("-progress", "pipe:2", "-nostats")
-        cmd = ffmpeg.compile(stream, cmd=self.ffmpeg_path, overwrite_output=self.overwrite)
+        cmd = ffmpeg.compile(
+            stream, cmd=self.ffmpeg_path, overwrite_output=self.overwrite
+        )
         stderr_lines = []
         process = subprocess.Popen(
             cmd,
@@ -411,7 +512,9 @@ class RunContext:
 
     def _run_ffmpeg_simple(self, stream):
         # Run without progress parsing; optionally suppress logs and console windows.
-        cmd = ffmpeg.compile(stream, cmd=self.ffmpeg_path, overwrite_output=self.overwrite)
+        cmd = ffmpeg.compile(
+            stream, cmd=self.ffmpeg_path, overwrite_output=self.overwrite
+        )
         stderr_target = subprocess.DEVNULL if self.disable_logs else subprocess.PIPE
         process = subprocess.Popen(
             cmd,
@@ -477,9 +580,11 @@ class RunContext:
         # ffmpeg may append a stream index (e.g. "-0") before the extension,
         # so we glob for all matching passlog files rather than exact names.
         import glob
+
         passlog_base = os.path.basename(self.passlog_path)
-        for filepath in glob.glob(os.path.join(self.log_dir, passlog_base + "*.log")) + \
-                        glob.glob(os.path.join(self.log_dir, passlog_base + "*.log.mbtree")):
+        for filepath in glob.glob(
+            os.path.join(self.log_dir, passlog_base + "*.log")
+        ) + glob.glob(os.path.join(self.log_dir, passlog_base + "*.log.mbtree")):
             try:
                 os.remove(filepath)
             except FileNotFoundError:

@@ -38,6 +38,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Add ffmpeg to PATH
+        shell: pwsh
+        run: echo "${{ github.workspace }}/ffmpeg_binaries/bin" >> $env:GITHUB_PATH
+
       - name: Integration tests
         run: python -m pytest tests/ -x --tb=short -q
 

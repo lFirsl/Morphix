@@ -128,8 +128,10 @@ class RunContext:
         # CRF encode (quality-preserving, no bitrate target).
         if self.trimming and self._estimated_segment_mb() <= self.max_mb:
             if self.encoder_name in ("libx264", "h264_nvenc"):
+                est = self._estimated_segment_mb()
                 print(
-                    f"Trimmed segment (~{self._estimated_segment_mb():.1f}MB) fits within {self.max_mb}MB — using CRF encode."
+                    f"Trimmed segment (~{est:.1f}MB) fits within "
+                    f"{self.max_mb}MB — using CRF encode."
                 )
                 return self._run_crf_encode()
 
@@ -285,7 +287,8 @@ class RunContext:
             reduction = self.max_mb / output_mb * 0.95
             retry_kbps = int(safe_kbps * reduction)
             print(
-                f"Output {output_mb:.1f}MB exceeds {self.max_mb}MB — retrying at {retry_kbps}k"
+                f"Output {output_mb:.1f}MB exceeds "
+                f"{self.max_mb}MB — retrying at {retry_kbps}k"
             )
             output = self._run_single_pass(retry_kbps)
 
@@ -336,7 +339,8 @@ class RunContext:
         # Fail early with a clear error if ffmpeg/ffprobe are missing.
         if not self.ffmpeg_path or not self.ffprobe_path:
             raise FileNotFoundError(
-                "ffmpeg/ffprobe not found. Place them in a 'ffmpeg' folder next to the app "
+                "ffmpeg/ffprobe not found. Place them in a "
+                "'ffmpeg' folder next to the app "
                 "or install them and add to PATH."
             )
 
@@ -406,8 +410,10 @@ class RunContext:
             )
             if scaled:
                 scale_filter = f"scale={scaled[0]}:{scaled[1]}"
+                w, h = scaled[0], scaled[1]
                 print(
-                    f"Auto-scaling to {scaled[0]}x{scaled[1]} for quality '{self.quality}'."
+                    f"Auto-scaling to {w}x{h} for "
+                    f"quality '{self.quality}'."
                 )
 
         self.scale_filter = scale_filter

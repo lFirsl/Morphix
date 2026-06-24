@@ -74,7 +74,10 @@ def detect_intel():
         try:
             import winreg  # type: ignore
 
-            key_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+            key_path = (
+                r"SYSTEM\CurrentControlSet\Control\Class"
+                r"\{4d36e968-e325-11ce-bfc1-08002be10318}"
+            )
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as base_key:
                 i = 0
                 while True:

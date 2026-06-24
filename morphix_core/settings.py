@@ -18,7 +18,8 @@ def read_settings():
 
 
 def write_settings(default_mb):
-    # Write {"default_mb": value} to %APPDATA%\Morphix\settings.json, creating dirs as needed.
+    # Write {"default_mb": value} to %APPDATA%\Morphix\settings.json,
+    # creating dirs as needed.
     appdata = os.environ.get("APPDATA", "")
     settings_dir = os.path.join(appdata, "Morphix")
     os.makedirs(settings_dir, exist_ok=True)

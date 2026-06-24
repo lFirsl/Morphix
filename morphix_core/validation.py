@@ -15,9 +15,9 @@ def check_target_exceeds_file_size(target_mb: float, input_path: str) -> None:
 
 
 def check_low_compression_ratio(target_mb: float, input_path: str) -> bool:
-    """Return True if target_mb is below 3% of the input file size (very high compression).
+    """Return True if target_mb is below 3% of the input file size.
 
-    Returns False otherwise.
+    Indicates very high compression. Returns False otherwise.
     """
     file_size_mb = os.path.getsize(input_path) / 1_000_000
     return target_mb < 0.03 * file_size_mb
@@ -46,8 +46,10 @@ def check_trim_values(start: float | None, end: float | None, full_duration: flo
     if end <= start:
         return False, "End time must be greater than Start time."
     if (end - start) > full_duration:
+        trim_dur = end - start
         return (
             False,
-            f"Trim duration ({end - start:.1f}s) exceeds video duration ({full_duration:.1f}s).",
+            f"Trim duration ({trim_dur:.1f}s) exceeds "
+            f"video duration ({full_duration:.1f}s).",
         )
     return True, None

@@ -9,16 +9,19 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-from morphix_core.core import (
+from morphix_core.core import (  # noqa: E402
+    detect_available_encoders,
     detect_build_type,
     find_ffmpeg_binaries,
     get_available_devices,
     get_ffmpeg_version,
     resolve_device_info,
     run,
+    select_encoder,
 )
-from morphix_core.settings import read_settings, write_settings
-from morphix_core.validation import (  # noqa: F401
+from morphix_core.ffmpeg_utils import ffprobe_media  # noqa: E402
+from morphix_core.settings import read_settings, write_settings  # noqa: E402
+from morphix_core.validation import (  # noqa: E402
     check_low_compression_ratio,
     check_target_exceeds_file_size,
     check_trim_values,
@@ -174,8 +177,8 @@ class MorphixUI(tk.Tk):
         self._refresh_encoder_menu()
 
     def _refresh_encoder_menu(self):
-        """Refresh encoder dropdown: grey out unavailable encoders with inline reasons."""
-        from morphix_core.ffmpeg_utils import detect_available_encoders
+        """Refresh encoder dropdown: grey out unavailable encoders."""
+        ffmpeg_path, _, _ = find_ffmpeg_binaries()
 
         ffmpeg_path, _, _ = find_ffmpeg_binaries()
         available = detect_available_encoders(ffmpeg_path)
@@ -223,8 +226,6 @@ class MorphixUI(tk.Tk):
 
     def _get_encoder_choices(self):
         """Return available encoder options for the dropdown."""
-        from morphix_core.ffmpeg_utils import detect_available_encoders
-
         ffmpeg_path, _, _ = find_ffmpeg_binaries()
         available = detect_available_encoders(ffmpeg_path)
         choices = ["Auto"]
@@ -277,10 +278,8 @@ class MorphixUI(tk.Tk):
             self.trim_frame.grid_forget()
 
     def _probe_media_duration(self, input_path: str):
-        """Probe the selected video and set trim duration bounds (non-blocking via after)."""
+        """Probe the video and set trim duration bounds."""
         try:
-            from morphix_core.ffmpeg_utils import ffprobe_media  # noqa: F401
-
             _, ffprobe_path, _ = find_ffmpeg_binaries()
             if not ffprobe_path:
                 return
@@ -336,7 +335,10 @@ class MorphixUI(tk.Tk):
         )
         tk.Message(
             self,
-            text="Lower target sizes can look blurry. Ideally set the Target Size to the maximum you're able to.",
+            text=(
+                "Lower target sizes can look blurry. Ideally set"
+                " the Target Size to the maximum you're able to."
+            ),
             width=420,
         ).grid(row=10, column=1, columnspan=2, sticky="w", **padding)
 
@@ -388,7 +390,7 @@ class MorphixUI(tk.Tk):
     # -------------------------------------------------------------------------
 
     def open_settings(self):
-        """Open a Toplevel settings dialog for configuring the default context menu MB."""
+        """Open settings dialog for default context menu MB."""
         win = tk.Toplevel(self)
         win.title("Morphix Settings")
         win.resizable(False, False)
@@ -407,7 +409,10 @@ class MorphixUI(tk.Tk):
 
         tk.Label(
             win,
-            text="This value is used by the 'Compress with Morphix' context menu entry.",
+            text=(
+                "This value is used by the "
+                "'Compress with Morphix' context menu entry."
+            ),
             fg="#666666",
             wraplength=320,
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12, pady=(0, 8))
@@ -470,8 +475,9 @@ class MorphixUI(tk.Tk):
             try:
                 trim_start = self._parse_time(self.trim_start_var.get())
                 trim_end = self._parse_time(self.trim_end_var.get())
-            except ValueError:
-                self.after(0, lambda: messagebox.showerror("Morphix", str(exc)))
+            except ValueError as exc:
+                err_msg = str(exc)
+                self.after(0, lambda: messagebox.showerror("Morphix", err_msg))
                 return
             ok, msg = check_trim_values(
                 trim_start, trim_end, self.trim_duration_seconds
@@ -508,12 +514,17 @@ class MorphixUI(tk.Tk):
             trim_ratio = (trim_end - trim_start) / self.trim_duration_seconds
             est_trimmed_mb = orig_file_mb * trim_ratio
             if size_value < 0.05 * est_trimmed_mb:
+                min_mb = est_trimmed_mb * 0.05
                 proceed = messagebox.askokcancel(
                     "Morphix — High Compression Warning",
-                    f"Your trimmed clip is estimated to be about {est_trimmed_mb:.1f} MB.\n\n"
-                    f"The target size ({size_value:.1f} MB) is less than 5% of the "
-                    f"estimated trimmed clip size. The output will very likely look poor.\n\n"
-                    f"Consider using a target of at least {est_trimmed_mb * 0.05:.1f} MB.\n\n"
+                    f"Your trimmed clip is estimated to be "
+                    f"about {est_trimmed_mb:.1f} MB.\n\n"
+                    f"The target size ({size_value:.1f} MB) is "
+                    f"less than 5% of the "
+                    f"estimated trimmed clip size. The output "
+                    f"will very likely look poor.\n\n"
+                    f"Consider using a target of at least "
+                    f"{min_mb:.1f} MB.\n\n"
                     "Do you want to continue anyway?",
                 )
                 if not proceed:
@@ -550,11 +561,7 @@ class MorphixUI(tk.Tk):
                             ),
                         )
 
-                from morphix_core.encoder_selection import select_encoder
-                from morphix_core.ffmpeg_utils import detect_available_encoders
-                from morphix_core.gpu_detection import resolve_device_info as _resolve
-
-                device_label, _ = _resolve(device_preference)
+                device_label, _ = resolve_device_info(device_preference)
                 detected = "nvidia" if "NVIDIA" in device_label else None
                 ffmpeg_path, _, _ = find_ffmpeg_binaries()
                 available = detect_available_encoders(ffmpeg_path)
@@ -595,7 +602,8 @@ class MorphixUI(tk.Tk):
                 self._set_status("Done.")
             except Exception as exc:
                 self._set_status(f"Failed: {exc}")
-                self.after(0, lambda: messagebox.showerror("Morphix", str(exc)))
+                err_msg = str(exc)
+                self.after(0, lambda: messagebox.showerror("Morphix", err_msg))
             finally:
                 self._is_running = False
                 self._set_controls_enabled(True)

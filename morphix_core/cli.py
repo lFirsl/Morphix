@@ -34,11 +34,13 @@ def main():
         print(
             "Warning: The target size is less than 3% of the original file size. "
             "The output quality will likely be very poor. "
-            "Consider a target of at least 5% of the original file size for a viewable result.",
+            "Consider a target of at least 5% of the original "
+            "file size for a viewable result.",
             file=sys.stderr,
         )
 
-    # Validate trim values when both start and end are provided (we don't yet have video metadata in CLI).
+    # Validate trim values when both start and end are provided
+    # (we don't yet have video metadata in CLI).
     if args.start is not None and args.end is not None:
         ok, msg = check_trim_values(args.start, args.end, float("inf"))
         if not ok:

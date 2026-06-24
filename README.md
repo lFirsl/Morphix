@@ -1,101 +1,106 @@
-# morphix-prototype
-A prototype for Morphix, a universal file conversion and compression desktop application, meant to make both conversion and compression an easy, one-button job for images, videos and audio files.
+# Morphix
+
+A Windows desktop video compression app wrapping ffmpeg. Compresses videos to a user-specified target size using intelligent encoder selection and two-pass encoding.
 
 ![](docs/BasicLogic.png)
 
-# Setup
-First, make sure you have your virtual environment setup.
+## Features
 
-Create the virtual environment locally, selecting `[y]` for every option, then verify it exists.
-This step installs a bunch of dependencies by default, which cover what need to be installed to run morphix as it is currently.
+- **One-button compression** — specify a target size in MB and Morphix handles the rest
+- **Smart encoder selection** — automatically picks the best available encoder:
+  - NVIDIA NVENC (multipass) when a GPU is available
+  - libx264 (two-pass) when a GPL ffmpeg is on PATH
+  - OpenH264 (single-pass with safety margin) as LGPL fallback
+- **Trim & compress** — extract a segment with start/end times, compress in one step
+- **Three entry points** — CLI, Tkinter GUI, and Windows Explorer context menu
+- **LGPL-compliant** — ships with an LGPL ffmpeg build (OpenH264); users can bring their own GPL ffmpeg for libx264
 
-```py
-conda create --name env python=3.13.9
-conda info --envs
-```
+## Setup
 
-Activate the environment:
-```py
-conda activate env
-```
+Create and activate the conda environment:
 
-Change python version, if you wish:
-```py
-conda uninstall python
-conda install python=3.13.9
-```
-
-Deactivate then delete the venv
-```
-conda activate
-conda remove --name env --all
-```
-
-# Example instruction
-
-Python Morphix.py examples/vid1.mp4 --max-mb 0.5 --output examples/outputs/vid1_new.mp4       
-# MSIX Rebuild Notes
-
-Build the EXE:
 ```bash
-PyInstaller --onefile -n Morphix_CLI --hidden-import=ffmpeg --add-binary "ffmpeg_binaries\\bin\\ffmpeg.exe;ffmpeg" --add-binary "ffmpeg_binaries\\bin\\ffprobe.exe;ffmpeg" Morphix.py
+conda create --name morphix python=3.13
+conda activate morphix
 ```
 
-Build the UI EXE (no console):
+Install dependencies:
+
 ```bash
-PyInstaller --onefile --noconsole -n Morphix_UI --hidden-import morphix_core.core --hidden-import morphix_core.cli --hidden-import ffmpeg --add-data "morphix_core;morphix_core" --add-binary "ffmpeg_binaries\\bin\\ffmpeg.exe;ffmpeg" --add-binary "ffmpeg_binaries\\bin\\ffprobe.exe;ffmpeg" morphix_ui/ui_app.py
+pip install -r requirements.txt
 ```
 
-Install/Run the UI:
+### FFmpeg binaries
+
+The bundled ffmpeg binaries are gitignored. Run the download script to fetch the LGPL build:
+
+```bash
+python scripts/download_ffmpeg.py
+```
+
+Alternatively, install ffmpeg via Chocolatey (`choco install ffmpeg`) — the app falls back to system PATH.
+
+## Usage
+
+### CLI
+
+```bash
+python Morphix.py input.mp4 --max-mb 8
+python Morphix.py input.mp4 --max-mb 8 --start 10 --end 30 --output trimmed.mp4
+```
+
+### UI
+
+```bash
+python morphix_ui/ui_app.py
+```
+
+Or run the built EXE:
+
 ```bash
 .\dist\Morphix_UI.exe
 ```
 
-Note: The bundled binaries are placed into `dist\ffmpeg\` so the app can use them first (with PATH as fallback).
+## Building
 
-Dependencies:
+Builds use `.spec` files at the project root. Run from the `morphix` conda environment:
+
 ```bash
-py -3 -m pip install -r requirements.txt
+conda run -n morphix python -m PyInstaller Morphix_CLI.spec
+conda run -n morphix python -m PyInstaller Morphix_UI.spec
 ```
 
-Build the COM DLL (outputs to `msix\ContextMenu\`):
-```powershell
-msbuild .\ContextMenuWrl\MorphixContextMenu.vcxproj /p:Configuration=Release /p:Platform=x64
+Output lands in `dist/`.
+
+## Linting & Testing
+
+```bash
+ruff check .
+pytest tests/ -x --tb=short -q
 ```
 
-Copy EXE into MSIX payload:
-```powershell
-copy .\dist\Morphix.exe .\msix\Morphix.exe
+Integration tests require ffmpeg on PATH or in `ffmpeg_binaries/bin/`:
+
+```bash
+pytest tests/ -m integration
 ```
 
-Pack + Sign (Windows Kits 10.0.26100.0):
-```cmd
-"C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\makeappx.exe" pack /d "C:\Users\flori\source\repos\morphix-prototype\msix" /p "C:\Users\flori\source\repos\morphix-prototype\Morphix.msix" /nv && "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" sign /fd SHA256 /a /f "C:\Users\flori\source\repos\morphix-prototype\Morphix.pfx" /p <YOUR_PASSWORD> "C:\Users\flori\source\repos\morphix-prototype\Morphix.msix"
+## CI
+
+- **`.github/workflows/ci.yml`** — lint + unit tests on every push/PR to main (only when `.py` files change)
+- **`.github/workflows/build.yml`** — full build on tagged releases (`v*`) or manual dispatch; attaches EXEs to the GitHub Release
+
+## Project Structure
+
+```
+morphix_core/       Core compression logic (encoding, bitrate, GPU detection, encoder selection)
+morphix_ui/         Tkinter GUI
+tests/              Unit, property-based, and integration tests
+ContextMenuWrl/     Windows Explorer context menu COM DLL (C++)
+msix/               MSIX packaging (see docs/msix.md)
+ffmpeg_binaries/    Gitignored; place ffmpeg.exe + ffprobe.exe in bin/
 ```
 
-Remove old package + install new:
-```powershell
-Get-AppxPackage -Name Morphix.Package | Remove-AppxPackage
-Add-AppxPackage "C:\Users\flori\source\repos\morphix-prototype\Morphix.msix"
-```
+## Context Menu & MSIX Packaging
 
-# Self-Signed Certificate (MSIX Signing)
-
-Create a self-signed cert in your user store:
-```powershell
-New-SelfSignedCertificate -Type Custom -Subject "CN=Morphix" -KeyUsage DigitalSignature -FriendlyName "MorphixSignCert" -CertStoreLocation "Cert:\CurrentUser\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
-```
-
-Export it to a PFX:
-```powershell
-$password = ConvertTo-SecureString -String <YOUR_PASSWORD> -Force -AsPlainText
-Export-PfxCertificate -cert "Cert:\CurrentUser\My\<CERT_THUMBPRINT>" -FilePath "C:\Users\flori\source\repos\morphix-prototype\Morphix.pfx" -Password $password
-```
-
-Trust the cert (required for Add-AppxPackage on this machine):
-```powershell
-Export-Certificate -Cert "Cert:\CurrentUser\My\<CERT_THUMBPRINT>" -FilePath "C:\Users\flori\source\repos\morphix-prototype\Morphix.cer"
-Import-Certificate -FilePath "C:\Users\flori\source\repos\morphix-prototype\Morphix.cer" -CertStoreLocation "Cert:\LocalMachine\Root"
-```
-
-Note: `Publisher="CN=Morphix"` in `msix/AppxManifest.xml` must match the cert subject.
+See [docs/msix.md](docs/msix.md) for COM DLL build instructions, MSIX packaging, and certificate setup.

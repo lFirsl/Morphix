@@ -2,24 +2,27 @@
 
 ## Project Overview
 
-Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresses videos to a user-specified max size in MB using two-pass H.264 (libx264) encoding with the `medium` preset. Three entry points share a common core: CLI, Tkinter UI, and a Windows Explorer context menu shell extension (COM DLL). Packaged as MSIX.
+Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresses videos to a user-specified max size in MB using intelligent encoder selection (NVENC multipass, libx264 two-pass, or OpenH264 single-pass fallback). Three entry points share a common core: CLI, Tkinter UI, and a Windows Explorer context menu shell extension (COM DLL). Packaged as MSIX.
 
 ## Architecture
 
 - `morphix_core/core.py` is a **re-export facade** — imports from submodules plus one thin `run()` function that instantiates `RunContext` and calls `.execute()`.
-- Submodules: `ffmpeg_utils.py`, `gpu_detection.py`, `encoding.py`, `bitrate.py`, `settings.py`, `validation.py`
+- Submodules: `ffmpeg_utils.py`, `gpu_detection.py`, `encoding.py`, `encoder_selection.py`, `bitrate.py`, `settings.py`, `validation.py`
 - `morphix_core/encoding.py` contains the `RunContext` class (all per-run state and execution).
+- `morphix_core/encoder_selection.py` contains encoder priority list, `select_encoder()`, and `OPENH264_WARNING`.
 - `morphix_ui/ui_app.py` is the Tkinter GUI (`MorphixUI(tk.Tk)`). Layout in `_build_ui()` and helper methods; event logic in separate methods.
 - `morphix_core/cli.py` + `morphix_core/cli_args.py` is the CLI entry point. Entry: `python -m morphix_core.cli` or `Morphix.py` (which imports cli.main).
 - `ContextMenuWrl/` is a 64-bit WRL-based C++ COM DLL implementing `IExplorerCommand` (two commands: "Compress with Morphix" and "Open in Morphix").
 - `msix/` contains the MSIX manifest, assets, built EXE, and DLL.
 - `scripts/build_msix.ps1` handles the full MSIX build+sign pipeline.
+- `scripts/download_ffmpeg.py` downloads LGPL ffmpeg binaries from BtbN into `ffmpeg_binaries/bin/`.
 
 ## Coding Conventions
 
 - Python 3.13+, conda environment named `morphix`.
 - Code style: PEP 8, enforced by **ruff** (config in `ruff.toml`). Line length 88, double quotes, isort-compatible import ordering.
 - Lint rules enabled: E (pycodestyle errors), W (warnings), F (pyflakes), I (isort).
+- Per-file ignores: `tests/*` ignores E402 (import order) and E501 (line length).
 - Run `ruff check .` to lint and `ruff format .` to format. Use `ruff check --fix .` for auto-fixable issues.
 - Uses `ffmpeg-python` library for building ffmpeg command graphs (`ffmpeg.input()`, `ffmpeg.output()`, `ffmpeg.compile()`), but execution is via `subprocess.Popen` for real-time progress parsing and console window suppression.
 - All subprocess calls use `popen_no_window_kwargs()` — `CREATE_NO_WINDOW` on Windows, `start_new_session=True` elsewhere.
@@ -78,3 +81,22 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - The UI auto-populates the output field when an input is selected (unless manually edited).
 - `RunContext` uses `device_preference` parameter (keys: `"auto"`, `"nvidia"`, `"amd"`, `"intel"`, `"cpu"`).
 - `RunContext` accepts `start` and `end` (float seconds, optional) for trim. `self.trimming` is set in `__init__` based on both being non-None.
+- `RunContext` accepts `warning_cb` (callable) and `encoder_override` (str|None).
+
+## Encoder Selection
+
+- Priority: h264_nvenc (nvenc_multipass) > libx264 (two_pass) > libopenh264 (single_pass_cbr).
+- `select_encoder()` in `encoder_selection.py` picks the best available encoder based on GPU detection and ffmpeg capabilities.
+- NVENC multipass uses full bitrate (no safety margin — its internal two-pass is accurate).
+- Single-pass encoders (OpenH264) use `SAFETY_MARGIN = 0.85` + one retry if output exceeds target.
+- OpenH264 warning shown once per session via `warning_cb` (popup in UI, stderr in CLI).
+- UI "Advanced" section shows Device + Encoder dropdowns; unavailable encoders greyed out with inline reason.
+- `detect_available_encoders(ffmpeg_path)` in `ffmpeg_utils.py` probes which encoders the bundled ffmpeg supports.
+- `detect_build_type(ffmpeg_path)` returns "gpl" or "lgpl" based on ffmpeg's configuration line.
+
+## CI / CD
+
+- `.github/workflows/ci.yml` — lint (ruff) + unit tests on push/PR to main, only when `.py`, `requirements.txt`, or `ruff.toml` change.
+- `.github/workflows/build.yml` — full build on tagged releases (`v*`) or manual dispatch. Downloads LGPL ffmpeg, runs all tests, builds both EXEs, uploads zipped artifacts, and creates a GitHub Release on tags.
+- Integration test fixture: `tests/fixtures/test_video.mp4` (15MB synthetic mandelbrot video, committed to repo).
+- FFmpeg binaries are gitignored; CI downloads from BtbN `latest` tag with caching.

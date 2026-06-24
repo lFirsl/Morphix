@@ -50,7 +50,7 @@ Get-AppxPackage -Name Morphix.Package | Remove-AppxPackage
 
 Install the new package:
 ```powershell
-Add-AppxPackage "C:\Users\flori\source\repos\morphix-prototype\Morphix.msix"
+Add-AppxPackage ".\Morphix.msix"
 ```
 
 ## 5) Signing the PowerShell build script
@@ -64,23 +64,23 @@ $cert = New-SelfSignedCertificate -Type CodeSigning -Subject "CN=Morphix" -CertS
 
 Export to .cer:
 ```powershell
-Export-Certificate -Cert $cert -FilePath "C:\Users\flori\source\repos\morphix-prototype\scripts\MorphixCodeSigning.cer"
+Export-Certificate -Cert $cert -FilePath ".\scripts\MorphixCodeSigning.cer"
 ```
 
 Trust the cert:
 ```powershell
-Import-Certificate -FilePath "C:\Users\flori\source\repos\morphix-prototype\scripts\MorphixCodeSigning.cer" -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher"
-Import-Certificate -FilePath "C:\Users\flori\source\repos\morphix-prototype\scripts\MorphixCodeSigning.cer" -CertStoreLocation "Cert:\CurrentUser\Root"
+Import-Certificate -FilePath ".\scripts\MorphixCodeSigning.cer" -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher"
+Import-Certificate -FilePath ".\scripts\MorphixCodeSigning.cer" -CertStoreLocation "Cert:\CurrentUser\Root"
 ```
 
 Sign the script:
 ```powershell
-Set-AuthenticodeSignature -FilePath "C:\Users\flori\source\repos\morphix-prototype\scripts\build_msix.ps1" -Certificate $cert
+Set-AuthenticodeSignature -FilePath ".\scripts\build_msix.ps1" -Certificate $cert
 ```
 
 Verify:
 ```powershell
-Get-AuthenticodeSignature "C:\Users\flori\source\repos\morphix-prototype\scripts\build_msix.ps1"
+Get-AuthenticodeSignature ".\scripts\build_msix.ps1"
 ```
 
 ## Notes

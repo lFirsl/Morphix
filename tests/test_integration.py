@@ -10,12 +10,7 @@ from morphix_core.core import find_ffmpeg_binaries, run
 pytestmark = pytest.mark.integration
 
 TEST_VIDEO = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        ".example_videos",
-        "Splatoon 3 - Test Compression File.mp4",
-    )
+    os.path.join(os.path.dirname(__file__), "fixtures", "test_video.mp4")
 )
 TARGET_MB = 5
 

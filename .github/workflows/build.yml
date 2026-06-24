@@ -54,23 +54,24 @@ jobs:
       - name: Build UI
         run: python -m PyInstaller Morphix_UI.spec
 
-      - name: Zip artifacts
-        shell: pwsh
-        run: |
-          Compress-Archive dist/Morphix_CLI.exe morphix-windows-cli.zip
-          Compress-Archive dist/Morphix_UI.exe morphix-windows-ui.zip
-
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
         with:
           name: morphix-windows-cli
-          path: morphix-windows-cli.zip
+          path: dist/Morphix_CLI.exe
 
       - name: Upload UI artifact
         uses: actions/upload-artifact@v7
         with:
           name: morphix-windows-ui
-          path: morphix-windows-ui.zip
+          path: dist/Morphix_UI.exe
+
+      - name: Zip release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          Compress-Archive dist/Morphix_CLI.exe morphix-windows-cli.zip
+          Compress-Archive dist/Morphix_UI.exe morphix-windows-ui.zip
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')

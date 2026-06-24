@@ -5,6 +5,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -51,10 +54,28 @@ jobs:
       - name: Build UI
         run: python -m PyInstaller Morphix_UI.spec
 
-      - name: Upload artifacts
+      - name: Zip artifacts
+        shell: pwsh
+        run: |
+          Compress-Archive dist/Morphix_CLI.exe morphix-windows-cli.zip
+          Compress-Archive dist/Morphix_UI.exe morphix-windows-ui.zip
+
+      - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: morphix-${{ github.ref_name }}
-          path: |
-            dist/Morphix_CLI.exe
-            dist/Morphix_UI.exe
+          name: morphix-windows-cli
+          path: morphix-windows-cli.zip
+
+      - name: Upload UI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: morphix-windows-ui
+          path: morphix-windows-ui.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            morphix-windows-cli.zip
+            morphix-windows-ui.zip

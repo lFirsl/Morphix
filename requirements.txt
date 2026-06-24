@@ -1,4 +1,6 @@
-ffmpeg-python==0.2.0
-tqdm==4.67.3
-pytest==9.1.1
-hypothesis==6.155.7
+ffmpeg-python>=0.2.0
+pyinstaller>=6.12.0
+ruff>=0.15.19
+tqdm>=4.67.0
+pytest>=9.1.0
+hypothesis>=6.155.0

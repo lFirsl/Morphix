@@ -20,7 +20,9 @@ OPENH264_WARNING = (
 SAFETY_MARGIN = 0.85  # For single-pass encoders, target 85% of calculated bitrate.
 
 
-def select_encoder(available_encoders: set, device_preference: str, detected_device: str | None) -> tuple[str, str]:
+def select_encoder(
+    available_encoders: set, device_preference: str, detected_device: str | None
+) -> tuple[str, str]:
     """Select the best encoder based on availability and device.
 
     Args:

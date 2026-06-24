@@ -1,13 +1,15 @@
-import sys
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 def parse_args_with(argv):
     with patch("sys.argv", argv):
         # Re-import to avoid module caching issues with argparse
         import importlib
+
         import morphix_core.cli_args as cli_args_mod
+
         importlib.reload(cli_args_mod)
         return cli_args_mod.parse_args()
 
@@ -26,7 +28,9 @@ def test_max_mb_float_argument():
 
 # 3. --output argument
 def test_output_argument():
-    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--output", "out.mp4"])
+    args = parse_args_with(
+        ["morphix", "video.mp4", "--max-mb", "10", "--output", "out.mp4"]
+    )
     assert args.output == "out.mp4"
 
 
@@ -39,7 +43,9 @@ def test_quality_default_is_medium():
 # 5. --quality choices
 def test_quality_choices():
     for quality in ["low", "medium", "high"]:
-        args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--quality", quality])
+        args = parse_args_with(
+            ["morphix", "video.mp4", "--max-mb", "10", "--quality", quality]
+        )
         assert args.quality == quality
 
 
@@ -112,14 +118,18 @@ def test_error_when_max_mb_missing_without_test():
 
 # 17. --resolution argument
 def test_resolution_argument():
-    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--resolution", "1280x720"])
+    args = parse_args_with(
+        ["morphix", "video.mp4", "--max-mb", "10", "--resolution", "1280x720"]
+    )
     assert args.resolution == "1280x720"
 
 
 # 18. --quality invalid choice exits
 def test_quality_invalid_choice_exits():
     with pytest.raises(SystemExit):
-        parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--quality", "ultra"])
+        parse_args_with(
+            ["morphix", "video.mp4", "--max-mb", "10", "--quality", "ultra"]
+        )
 
 
 # 19. --overwrite explicit flag
@@ -156,19 +166,23 @@ def test_test_flag_does_not_override_explicit_max_mb():
 # 24. --no-console re-launch path (mocked subprocess)
 def test_no_console_relaunches_subprocess_on_windows():
     """When --no-console is set on Windows, cli.main() should re-launch via subprocess and return."""
-    import importlib
     import morphix_core.cli as cli_mod
 
     mock_args = MagicMock()
     mock_args.no_console = True
 
-    with patch("os.name", "nt"), \
-         patch("morphix_core.cli.parse_args", return_value=mock_args), \
-         patch("morphix_core.cli.subprocess.Popen") as mock_popen:
+    with (
+        patch("os.name", "nt"),
+        patch("morphix_core.cli.parse_args", return_value=mock_args),
+        patch("morphix_core.cli.subprocess.Popen") as mock_popen,
+    ):
         cli_mod.main()
         mock_popen.assert_called_once()
         call_kwargs = mock_popen.call_args[1]
-        assert call_kwargs.get("creationflags") == __import__("subprocess").CREATE_NO_WINDOW
+        assert (
+            call_kwargs.get("creationflags")
+            == __import__("subprocess").CREATE_NO_WINDOW
+        )
 
 
 # 25. --no-console flag is NOT set: no re-launch
@@ -188,11 +202,13 @@ def test_no_console_not_set_does_not_relaunch():
     mock_args.start = None
     mock_args.end = None
 
-    with patch("morphix_core.cli.parse_args", return_value=mock_args), \
-         patch("morphix_core.cli.check_target_exceeds_file_size"), \
-         patch("morphix_core.cli.check_low_compression_ratio", return_value=False), \
-         patch("morphix_core.cli.run") as mock_run, \
-         patch("morphix_core.cli.subprocess.Popen") as mock_popen:
+    with (
+        patch("morphix_core.cli.parse_args", return_value=mock_args),
+        patch("morphix_core.cli.check_target_exceeds_file_size"),
+        patch("morphix_core.cli.check_low_compression_ratio", return_value=False),
+        patch("morphix_core.cli.run") as mock_run,
+        patch("morphix_core.cli.subprocess.Popen") as mock_popen,
+    ):
         cli_mod.main()
         mock_run.assert_called_once()
         mock_popen.assert_not_called()
@@ -204,7 +220,9 @@ def test_no_console_not_set_does_not_relaunch():
 
 
 def test_start_argument_parsed():
-    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--start", "30.5"])
+    args = parse_args_with(
+        ["morphix", "video.mp4", "--max-mb", "10", "--start", "30.5"]
+    )
     assert args.start == 30.5
 
 
@@ -214,7 +232,9 @@ def test_end_argument_parsed():
 
 
 def test_both_start_and_end():
-    args = parse_args_with(["morphix", "video.mp4", "--max-mb", "10", "--start", "10", "--end", "30"])
+    args = parse_args_with(
+        ["morphix", "video.mp4", "--max-mb", "10", "--start", "10", "--end", "30"]
+    )
     assert args.start == 10.0
     assert args.end == 30.0
 

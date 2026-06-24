@@ -43,6 +43,7 @@ def detect_amd():
     if os.name == "nt":
         try:
             import wmi  # type: ignore
+
             c = wmi.WMI()
             for adapter in c.Win32_VideoController():
                 name = (adapter.Name or "").upper()
@@ -60,6 +61,7 @@ def detect_intel():
         # Try WMI first.
         try:
             import wmi  # type: ignore
+
             c = wmi.WMI()
             for adapter in c.Win32_VideoController():
                 name = (adapter.Name or "").upper()
@@ -71,6 +73,7 @@ def detect_intel():
         # Fall back to registry query.
         try:
             import winreg  # type: ignore
+
             key_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as base_key:
                 i = 0

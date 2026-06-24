@@ -1,6 +1,5 @@
 """Unit tests for MorphixUI controls and state (Requirements 12.1–12.15, 16.1–16.4)."""
 
-import os
 import sys
 import threading
 import time
@@ -116,13 +115,19 @@ class _FakeTk(_FakeWidget):
 _tk_mod = types.ModuleType("tkinter")
 _tk_mod.Tk = _FakeTk
 _tk_mod.StringVar = _FakeStringVar
+
+
 class _FakeBooleanVar:
     def __init__(self, value=False):
         self._value = bool(value)
+
     def get(self):
         return self._value
+
     def set(self, value):
         self._value = bool(value)
+
+
 _tk_mod.BooleanVar = _FakeBooleanVar
 _tk_mod.Label = _FakeWidget
 _tk_mod.Checkbutton = _FakeWidget
@@ -169,6 +174,7 @@ def _core_patches():
 def _make_app(input_file=None):
     """Instantiate MorphixUI with all core functions mocked."""
     import importlib
+
     import morphix_ui.ui_app as ui_mod
 
     with _core_patches():
@@ -294,9 +300,13 @@ class TestMorphixUIControlState(unittest.TestCase):
             states_during["device_menu"] = app.device_menu._state
             worker_may_finish.wait(timeout=3)
 
-        with patch.object(self.ui_mod, "run", side_effect=fake_run), \
-             patch.object(self.ui_mod, "check_target_exceeds_file_size"), \
-             patch.object(self.ui_mod, "check_low_compression_ratio", return_value=False):
+        with (
+            patch.object(self.ui_mod, "run", side_effect=fake_run),
+            patch.object(self.ui_mod, "check_target_exceeds_file_size"),
+            patch.object(
+                self.ui_mod, "check_low_compression_ratio", return_value=False
+            ),
+        ):
             app.run_compress()
             worker_started.wait(timeout=3)
             worker_may_finish.set()
@@ -305,20 +315,38 @@ class TestMorphixUIControlState(unittest.TestCase):
         time.sleep(0.15)
 
         # During compression, controls should have been disabled
-        self.assertEqual(states_during.get("compress_btn"), "disabled",
-                         "compress_btn should be disabled during compression")
-        self.assertEqual(states_during.get("input_entry"), "disabled",
-                         "input_entry should be disabled during compression")
-        self.assertEqual(states_during.get("device_menu"), "disabled",
-                         "device_menu should be disabled during compression")
+        self.assertEqual(
+            states_during.get("compress_btn"),
+            "disabled",
+            "compress_btn should be disabled during compression",
+        )
+        self.assertEqual(
+            states_during.get("input_entry"),
+            "disabled",
+            "input_entry should be disabled during compression",
+        )
+        self.assertEqual(
+            states_during.get("device_menu"),
+            "disabled",
+            "device_menu should be disabled during compression",
+        )
 
         # After completion, controls should be re-enabled
-        self.assertEqual(app.compress_btn._state, "normal",
-                         "compress_btn should be normal after completion")
-        self.assertEqual(app.input_entry._state, "normal",
-                         "input_entry should be normal after completion")
-        self.assertEqual(app.device_menu._state, "normal",
-                         "device_menu should be normal after completion")
+        self.assertEqual(
+            app.compress_btn._state,
+            "normal",
+            "compress_btn should be normal after completion",
+        )
+        self.assertEqual(
+            app.input_entry._state,
+            "normal",
+            "input_entry should be normal after completion",
+        )
+        self.assertEqual(
+            app.device_menu._state,
+            "normal",
+            "device_menu should be normal after completion",
+        )
 
     # --- Test 7: Controls re-enabled on error ---
 
@@ -331,23 +359,35 @@ class TestMorphixUIControlState(unittest.TestCase):
         def fake_run_raises(*args, **kwargs):
             raise RuntimeError("ffmpeg failed")
 
-        with patch.object(self.ui_mod, "run", side_effect=fake_run_raises), \
-             patch.object(self.ui_mod, "messagebox"), \
-             patch.object(self.ui_mod, "check_target_exceeds_file_size"), \
-             patch.object(self.ui_mod, "check_low_compression_ratio", return_value=False):
+        with (
+            patch.object(self.ui_mod, "run", side_effect=fake_run_raises),
+            patch.object(self.ui_mod, "messagebox"),
+            patch.object(self.ui_mod, "check_target_exceeds_file_size"),
+            patch.object(
+                self.ui_mod, "check_low_compression_ratio", return_value=False
+            ),
+        ):
             app.run_compress()
 
         # Give the background thread time to finish
         time.sleep(0.15)
 
-        self.assertEqual(app.compress_btn._state, "normal",
-                         "compress_btn should be re-enabled after error")
-        self.assertEqual(app.input_entry._state, "normal",
-                         "input_entry should be re-enabled after error")
-        self.assertEqual(app.device_menu._state, "normal",
-                         "device_menu should be re-enabled after error")
-        self.assertFalse(app._is_running,
-                         "_is_running should be False after error")
+        self.assertEqual(
+            app.compress_btn._state,
+            "normal",
+            "compress_btn should be re-enabled after error",
+        )
+        self.assertEqual(
+            app.input_entry._state,
+            "normal",
+            "input_entry should be re-enabled after error",
+        )
+        self.assertEqual(
+            app.device_menu._state,
+            "normal",
+            "device_menu should be re-enabled after error",
+        )
+        self.assertFalse(app._is_running, "_is_running should be False after error")
 
 
 # ===========================================================================

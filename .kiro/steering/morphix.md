@@ -18,6 +18,9 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 ## Coding Conventions
 
 - Python 3.13+, conda environment named `morphix`.
+- Code style: PEP 8, enforced by **ruff** (config in `ruff.toml`). Line length 88, double quotes, isort-compatible import ordering.
+- Lint rules enabled: E (pycodestyle errors), W (warnings), F (pyflakes), I (isort).
+- Run `ruff check .` to lint and `ruff format .` to format. Use `ruff check --fix .` for auto-fixable issues.
 - Uses `ffmpeg-python` library for building ffmpeg command graphs (`ffmpeg.input()`, `ffmpeg.output()`, `ffmpeg.compile()`), but execution is via `subprocess.Popen` for real-time progress parsing and console window suppression.
 - All subprocess calls use `popen_no_window_kwargs()` — `CREATE_NO_WINDOW` on Windows, `start_new_session=True` elsewhere.
 - Bundled ffmpeg binaries searched in: `_MEIPASS` → Python exe directory → `../ffmpeg/` relative to `core.py` → system PATH via `shutil.which`.

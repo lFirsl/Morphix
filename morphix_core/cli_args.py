@@ -105,6 +105,8 @@ def parse_args():
         if args.input is None:
             parser.error("the following arguments are required: input (or use --test)")
         if args.max_mb is None:
-            parser.error("the following arguments are required: --max-mb (or use --test)")
+            parser.error(
+                "the following arguments are required: --max-mb (or use --test)"
+            )
 
     return args

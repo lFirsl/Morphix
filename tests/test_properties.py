@@ -8,30 +8,55 @@ import json
 import os
 import subprocess
 import tempfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-from hypothesis import given, settings, HealthCheck, assume
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from morphix_core.bitrate import target_kbps_for_size_mb, compute_scaled_resolution, clamp_even
-from morphix_core.ffmpeg_utils import find_ffmpeg_binaries, popen_no_window_kwargs
-from morphix_core.gpu_detection import resolve_device_info, get_available_devices, detect_device_info
+from morphix_core.bitrate import (
+    clamp_even,
+    compute_scaled_resolution,
+    target_kbps_for_size_mb,
+)
+from morphix_core.ffmpeg_utils import popen_no_window_kwargs
+from morphix_core.gpu_detection import (
+    detect_device_info,
+    get_available_devices,
+    resolve_device_info,
+)
 from morphix_core.settings import read_settings, write_settings
-from morphix_core.validation import check_target_exceeds_file_size, check_low_compression_ratio
+from morphix_core.validation import (
+    check_low_compression_ratio,
+    check_target_exceeds_file_size,
+)
 
 # Suppress function_scoped_fixture health check for all tests that use tmp_path with @given
-_FS_SETTINGS = settings(suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture])
+_FS_SETTINGS = settings(
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture]
+)
 
 # ---------------------------------------------------------------------------
 # Helper to create a RunContext without triggering ffmpeg binary search
 # ---------------------------------------------------------------------------
 
-def make_ctx(input_path, max_mb=15, output_path=None, resolution=None, quality="medium"):
+
+def make_ctx(
+    input_path, max_mb=15, output_path=None, resolution=None, quality="medium"
+):
     from morphix_core.encoding import RunContext
-    with patch("morphix_core.encoding.find_ffmpeg_binaries", return_value=(None, None, "missing")):
-        ctx = RunContext(input_path, max_mb, output_path=output_path,
-                        resolution=resolution, quality=quality)
+
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
+        ctx = RunContext(
+            input_path,
+            max_mb,
+            output_path=output_path,
+            resolution=resolution,
+            quality=quality,
+        )
     return ctx
 
 
@@ -39,6 +64,7 @@ def make_ctx(input_path, max_mb=15, output_path=None, resolution=None, quality="
 # Property 1: Bitrate formula and minimum clamp
 # Validates: Requirements 1.3, 1.4
 # ---------------------------------------------------------------------------
+
 
 @given(
     size_mb=st.floats(min_value=0.1, max_value=10000),
@@ -61,14 +87,18 @@ def test_prop1_bitrate_formula_and_minimum_clamp(size_mb, duration_s, audio_kbps
 # Validates: Requirements 2.1, 2.2, 2.4
 # ---------------------------------------------------------------------------
 
-_filename_with_ext = st.from_regex(r'[a-zA-Z0-9_]{1,20}\.[a-zA-Z0-9]{1,4}', fullmatch=True)
-_filename_no_ext = st.from_regex(r'[a-zA-Z0-9_]{1,20}', fullmatch=True)
+_filename_with_ext = st.from_regex(
+    r"[a-zA-Z0-9_]{1,20}\.[a-zA-Z0-9]{1,4}", fullmatch=True
+)
+_filename_no_ext = st.from_regex(r"[a-zA-Z0-9_]{1,20}", fullmatch=True)
 
 
 @_FS_SETTINGS
 @given(
     filename=_filename_with_ext,
-    size_mb=st.floats(min_value=0.1, max_value=10000, allow_nan=False, allow_infinity=False),
+    size_mb=st.floats(
+        min_value=0.1, max_value=10000, allow_nan=False, allow_infinity=False
+    ),
 )
 def test_prop2_output_path_derivation(tmp_path, filename, size_mb):
     """Property 2: output contains _{size}mb before extension and is in same dir as input.
@@ -92,7 +122,9 @@ def test_prop2_output_path_derivation(tmp_path, filename, size_mb):
 @_FS_SETTINGS
 @given(
     filename=_filename_no_ext,
-    size_mb=st.floats(min_value=0.1, max_value=10000, allow_nan=False, allow_infinity=False),
+    size_mb=st.floats(
+        min_value=0.1, max_value=10000, allow_nan=False, allow_infinity=False
+    ),
 )
 def test_prop2_output_path_no_extension_uses_mp4(tmp_path, filename, size_mb):
     """Property 2: output uses .mp4 when input has no extension.
@@ -111,10 +143,11 @@ def test_prop2_output_path_no_extension_uses_mp4(tmp_path, filename, size_mb):
 # Validates: Requirements 2.3
 # ---------------------------------------------------------------------------
 
+
 @_FS_SETTINGS
 @given(
-    in_name=st.from_regex(r'[a-zA-Z0-9_]{1,20}\.mp4', fullmatch=True),
-    out_name=st.from_regex(r'[a-zA-Z0-9_]{1,20}\.mp4', fullmatch=True),
+    in_name=st.from_regex(r"[a-zA-Z0-9_]{1,20}\.mp4", fullmatch=True),
+    out_name=st.from_regex(r"[a-zA-Z0-9_]{1,20}\.mp4", fullmatch=True),
 )
 def test_prop3_explicit_output_path_preserved(tmp_path, in_name, out_name):
     """Property 3: when explicit output_path is provided, _resolve_output_path leaves it unchanged.
@@ -132,14 +165,23 @@ def test_prop3_explicit_output_path_preserved(tmp_path, in_name, out_name):
 # Validates: Requirements 3.3
 # ---------------------------------------------------------------------------
 
+
 @given(
     width=st.integers(min_value=2, max_value=7680),
     height=st.integers(min_value=2, max_value=4320),
-    fps=st.floats(min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False),
-    target_bpp=st.floats(min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False),
-    multiplier=st.floats(min_value=1.0, max_value=10.0, allow_nan=False, allow_infinity=False),
+    fps=st.floats(
+        min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False
+    ),
+    target_bpp=st.floats(
+        min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False
+    ),
+    multiplier=st.floats(
+        min_value=1.0, max_value=10.0, allow_nan=False, allow_infinity=False
+    ),
 )
-def test_prop4_no_scaling_when_bpp_sufficient(width, height, fps, target_bpp, multiplier):
+def test_prop4_no_scaling_when_bpp_sufficient(
+    width, height, fps, target_bpp, multiplier
+):
     """Property 4: when current_bpp >= target_bpp, result is None.
     **Validates: Requirements 3.3**
     """
@@ -158,14 +200,23 @@ def test_prop4_no_scaling_when_bpp_sufficient(width, height, fps, target_bpp, mu
 # Validates: Requirements 3.4
 # ---------------------------------------------------------------------------
 
+
 @given(
     width=st.integers(min_value=100, max_value=7680),
     height=st.integers(min_value=100, max_value=4320),
-    fps=st.floats(min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False),
-    target_bpp=st.floats(min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False),
-    fraction=st.floats(min_value=0.01, max_value=0.99, allow_nan=False, allow_infinity=False),
+    fps=st.floats(
+        min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False
+    ),
+    target_bpp=st.floats(
+        min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False
+    ),
+    fraction=st.floats(
+        min_value=0.01, max_value=0.99, allow_nan=False, allow_infinity=False
+    ),
 )
-def test_prop5_scaled_resolution_satisfies_target_bpp(width, height, fps, target_bpp, fraction):
+def test_prop5_scaled_resolution_satisfies_target_bpp(
+    width, height, fps, target_bpp, fraction
+):
     """Property 5: when scaling occurs, resulting bpp is approximately target_bpp.
     **Validates: Requirements 3.4**
     """
@@ -186,12 +237,19 @@ def test_prop5_scaled_resolution_satisfies_target_bpp(width, height, fps, target
 # Validates: Requirements 3.5
 # ---------------------------------------------------------------------------
 
+
 @given(
     width=st.integers(min_value=100, max_value=7680),
     height=st.integers(min_value=481, max_value=4320),
-    fps=st.floats(min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False),
-    target_bpp=st.floats(min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False),
-    fraction=st.floats(min_value=0.001, max_value=0.1, allow_nan=False, allow_infinity=False),
+    fps=st.floats(
+        min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False
+    ),
+    target_bpp=st.floats(
+        min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False
+    ),
+    fraction=st.floats(
+        min_value=0.001, max_value=0.1, allow_nan=False, allow_infinity=False
+    ),
 )
 def test_prop6_minimum_height_floor_enforced(width, height, fps, target_bpp, fraction):
     """Property 6: when result is not None, height >= 480.
@@ -199,7 +257,9 @@ def test_prop6_minimum_height_floor_enforced(width, height, fps, target_bpp, fra
     """
     video_bps = target_bpp * fraction * fps * width * height
     assume(video_bps > 0)
-    result = compute_scaled_resolution(width, height, fps, video_bps, target_bpp, min_height=480)
+    result = compute_scaled_resolution(
+        width, height, fps, video_bps, target_bpp, min_height=480
+    )
     if result is not None:
         _, new_h = result
         assert new_h >= 480
@@ -209,6 +269,7 @@ def test_prop6_minimum_height_floor_enforced(width, height, fps, target_bpp, fra
 # Property 7: All computed dimensions are even integers
 # Validates: Requirements 3.6, 4.2
 # ---------------------------------------------------------------------------
+
 
 @given(x=st.integers(min_value=-10000, max_value=10000))
 def test_prop7_clamp_even_always_even(x):
@@ -223,9 +284,15 @@ def test_prop7_clamp_even_always_even(x):
 @given(
     width=st.integers(min_value=100, max_value=7680),
     height=st.integers(min_value=100, max_value=4320),
-    fps=st.floats(min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False),
-    target_bpp=st.floats(min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False),
-    fraction=st.floats(min_value=0.01, max_value=0.99, allow_nan=False, allow_infinity=False),
+    fps=st.floats(
+        min_value=1.0, max_value=240.0, allow_nan=False, allow_infinity=False
+    ),
+    target_bpp=st.floats(
+        min_value=0.01, max_value=1.0, allow_nan=False, allow_infinity=False
+    ),
+    fraction=st.floats(
+        min_value=0.01, max_value=0.99, allow_nan=False, allow_infinity=False
+    ),
 )
 def test_prop7_scaled_dimensions_are_even(width, height, fps, target_bpp, fraction):
     """Property 7: both width and height from compute_scaled_resolution are even when result is not None.
@@ -244,6 +311,7 @@ def test_prop7_scaled_dimensions_are_even(width, height, fps, target_bpp, fracti
 # Property 8: Manual resolution override is applied
 # Validates: Requirements 4.1
 # ---------------------------------------------------------------------------
+
 
 @_FS_SETTINGS
 @given(
@@ -275,14 +343,15 @@ def test_prop8_manual_resolution_override_applied(tmp_path, w, h):
 # ---------------------------------------------------------------------------
 
 _no_x_str = st.text(
-    alphabet=st.characters(blacklist_characters='x', blacklist_categories=('Cs',)),
-    min_size=1, max_size=20,
+    alphabet=st.characters(blacklist_characters="x", blacklist_categories=("Cs",)),
+    min_size=1,
+    max_size=20,
 )
 _bad_resolution = st.one_of(
     _no_x_str,
-    st.from_regex(r'[a-zA-Z]+x[0-9]+', fullmatch=True),
-    st.from_regex(r'[0-9]+x[a-zA-Z]+', fullmatch=True),
-    st.from_regex(r'[a-zA-Z]+x[a-zA-Z]+', fullmatch=True),
+    st.from_regex(r"[a-zA-Z]+x[0-9]+", fullmatch=True),
+    st.from_regex(r"[0-9]+x[a-zA-Z]+", fullmatch=True),
+    st.from_regex(r"[a-zA-Z]+x[a-zA-Z]+", fullmatch=True),
 )
 
 
@@ -305,12 +374,14 @@ def test_prop9_invalid_resolution_no_scale_filter(tmp_path, resolution):
 # Validates: Requirements 5.7
 # ---------------------------------------------------------------------------
 
-_exception_types = st.sampled_from([
-    RuntimeError("nvidia error"),
-    OSError("amd error"),
-    Exception("intel error"),
-    ValueError("val error"),
-])
+_exception_types = st.sampled_from(
+    [
+        RuntimeError("nvidia error"),
+        OSError("amd error"),
+        Exception("intel error"),
+        ValueError("val error"),
+    ]
+)
 
 
 @given(
@@ -322,9 +393,11 @@ def test_prop10_gpu_detection_exceptions_swallowed(nvidia_exc, amd_exc, intel_ex
     """Property 10: detect_device_info always returns ("CPU", None) when all detections raise.
     **Validates: Requirements 5.7**
     """
-    with patch("morphix_core.gpu_detection.detect_cuda", side_effect=nvidia_exc), \
-         patch("morphix_core.gpu_detection.detect_amd", side_effect=amd_exc), \
-         patch("morphix_core.gpu_detection.detect_intel", side_effect=intel_exc):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", side_effect=nvidia_exc),
+        patch("morphix_core.gpu_detection.detect_amd", side_effect=amd_exc),
+        patch("morphix_core.gpu_detection.detect_intel", side_effect=intel_exc),
+    ):
         label, hwaccel = detect_device_info()
     assert label == "CPU"
     assert hwaccel is None
@@ -335,6 +408,7 @@ def test_prop10_gpu_detection_exceptions_swallowed(nvidia_exc, amd_exc, intel_ex
 # Validates: Requirements 5.8
 # ---------------------------------------------------------------------------
 
+
 @given(
     has_nvidia=st.booleans(),
     has_amd=st.booleans(),
@@ -344,9 +418,11 @@ def test_prop19_cpu_always_in_device_list(has_nvidia, has_amd, has_intel):
     """Property 19: get_available_devices() always ends with ("cpu", "CPU").
     **Validates: Requirements 5.8**
     """
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=has_nvidia), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=has_amd), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=has_intel):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=has_nvidia),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=has_amd),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=has_intel),
+    ):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU")
 
@@ -357,8 +433,11 @@ def test_prop19_cpu_always_in_device_list(has_nvidia, has_amd, has_intel):
 # ---------------------------------------------------------------------------
 
 _unknown_device_keys = st.text(
-    alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd'), whitelist_characters='_'),
-    min_size=1, max_size=20,
+    alphabet=st.characters(
+        whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters="_"
+    ),
+    min_size=1,
+    max_size=20,
 ).filter(lambda s: s not in ("cpu",))
 
 
@@ -367,9 +446,11 @@ def test_prop20_resolve_device_info_fallback_to_cpu(device_key):
     """Property 20: for any unknown device key with no GPU available, returns ("CPU", None).
     **Validates: Requirements 5.9**
     """
-    with patch("morphix_core.gpu_detection.detect_cuda", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_amd", return_value=False), \
-         patch("morphix_core.gpu_detection.detect_intel", return_value=False):
+    with (
+        patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
+        patch("morphix_core.gpu_detection.detect_amd", return_value=False),
+        patch("morphix_core.gpu_detection.detect_intel", return_value=False),
+    ):
         label, hwaccel = resolve_device_info(device_key)
     assert label == "CPU"
     assert hwaccel is None
@@ -379,6 +460,7 @@ def test_prop20_resolve_device_info_fallback_to_cpu(device_key):
 # Property 11: Binary resolution returns first valid candidate
 # Validates: Requirements 6.1, 6.2, 6.3
 # ---------------------------------------------------------------------------
+
 
 @_FS_SETTINGS
 @given(
@@ -423,6 +505,7 @@ def test_prop11_binary_resolution_first_valid_candidate(n_candidates, valid_inde
 # Validates: Requirements 7.1, 7.3
 # ---------------------------------------------------------------------------
 
+
 @given(out_time_ms=st.integers(min_value=0, max_value=10**12))
 def test_prop12_progress_parsing_direct(out_time_ms):
     """Property 12: out_time_ms=N yields N / 1_000_000.0 seconds.
@@ -444,12 +527,14 @@ def test_prop12_progress_parsing_direct(out_time_ms):
 # Validates: Requirements 8.1
 # ---------------------------------------------------------------------------
 
-@given(filename=st.from_regex(r'[a-zA-Z0-9_]{1,20}\.mp4', fullmatch=True))
+
+@given(filename=st.from_regex(r"[a-zA-Z0-9_]{1,20}\.mp4", fullmatch=True))
 def test_prop13_passlog_path_under_output_subdir(filename):
     """Property 13: passlog_path is under a .output/ subdirectory of the input file's directory.
     **Validates: Requirements 8.1**
     """
     import shutil
+
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = os.path.join(tmpdir, filename)
         ctx = make_ctx(input_path)
@@ -467,6 +552,7 @@ def test_prop13_passlog_path_under_output_subdir(filename):
 # Property 14: Empty `.output/` directory removed after cleanup
 # Validates: Requirements 8.3
 # ---------------------------------------------------------------------------
+
 
 @given(n_passlog_files=st.integers(min_value=0, max_value=5))
 def test_prop14_empty_output_dir_removed_after_cleanup(n_passlog_files):
@@ -547,6 +633,7 @@ def test_prop15_ffmpeg_error_log_no_stderr(stderr_bytes):
 # Validates: Requirements 9.4
 # ---------------------------------------------------------------------------
 
+
 @given(stderr_bytes=st.one_of(st.just(None), st.binary(min_size=0, max_size=100)))
 def test_prop16_ffmpeg_exception_reraised_after_logging(stderr_bytes):
     """Property 16: _write_ffmpeg_error does not raise; _run_ffmpeg re-raises the original exception.
@@ -581,6 +668,7 @@ def test_prop16_ffmpeg_exception_reraised_after_logging(stderr_bytes):
 # Validates: Requirements 10.1, 10.2
 # ---------------------------------------------------------------------------
 
+
 @given(os_name=st.just("nt"))
 def test_prop17_subprocess_flags_windows(os_name):
     """Property 17: on 'nt', returns {"creationflags": subprocess.CREATE_NO_WINDOW}.
@@ -606,12 +694,18 @@ def test_prop17_subprocess_flags_non_windows(os_name):
 # Validates: Requirements 15.3, 15.4
 # ---------------------------------------------------------------------------
 
-@given(size_gb=st.floats(min_value=0.001, max_value=1000, allow_nan=False, allow_infinity=False))
+
+@given(
+    size_gb=st.floats(
+        min_value=0.001, max_value=1000, allow_nan=False, allow_infinity=False
+    )
+)
 def test_prop18_gb_to_mb_conversion(size_gb):
     """Property 18: size_mb = size_gb * 1000.
     **Validates: Requirements 15.3, 15.4**
     """
     import math
+
     size_mb = size_gb * 1000
     assert size_mb == size_gb * 1000
     assert not math.isnan(size_mb)
@@ -623,7 +717,12 @@ def test_prop18_gb_to_mb_conversion(size_gb):
 # Validates: Requirements 20.3, 20.4
 # ---------------------------------------------------------------------------
 
-@given(default_mb=st.floats(min_value=0.001, max_value=100000, allow_nan=False, allow_infinity=False))
+
+@given(
+    default_mb=st.floats(
+        min_value=0.001, max_value=100000, allow_nan=False, allow_infinity=False
+    )
+)
 def test_prop21_settings_round_trip(default_mb):
     """Property 21: write then read back yields the same value (within float tolerance).
     **Validates: Requirements 20.3, 20.4**
@@ -639,6 +738,7 @@ def test_prop21_settings_round_trip(default_mb):
 # Property 22: Settings fallback to 20 MB
 # Validates: Requirements 20.2, 20.6
 # ---------------------------------------------------------------------------
+
 
 def test_prop22_settings_fallback_missing_file():
     """Property 22: read_settings() returns {"default_mb": 20} when file is missing.
@@ -666,19 +766,23 @@ def test_prop22_settings_fallback_invalid_json(invalid_json):
     with tempfile.TemporaryDirectory() as tmpdir:
         settings_dir = os.path.join(tmpdir, "Morphix")
         os.makedirs(settings_dir, exist_ok=True)
-        with open(os.path.join(settings_dir, "settings.json"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(settings_dir, "settings.json"), "w", encoding="utf-8"
+        ) as f:
             f.write(invalid_json)
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             result = read_settings()
     assert result == {"default_mb": 20}
 
 
-@given(bad_value=st.one_of(
-    st.just("not_a_number"),
-    st.just(-1),
-    st.just(0),
-    st.floats(max_value=0.0, allow_nan=False),
-))
+@given(
+    bad_value=st.one_of(
+        st.just("not_a_number"),
+        st.just(-1),
+        st.just(0),
+        st.floats(max_value=0.0, allow_nan=False),
+    )
+)
 def test_prop22_settings_fallback_bad_default_mb(bad_value):
     """Property 22: read_settings() returns {"default_mb": 20} when default_mb is missing/non-positive.
     **Validates: Requirements 20.2, 20.6**
@@ -687,7 +791,9 @@ def test_prop22_settings_fallback_bad_default_mb(bad_value):
         settings_dir = os.path.join(tmpdir, "Morphix")
         os.makedirs(settings_dir, exist_ok=True)
         data = {"default_mb": bad_value}
-        with open(os.path.join(settings_dir, "settings.json"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(settings_dir, "settings.json"), "w", encoding="utf-8"
+        ) as f:
             json.dump(data, f)
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             result = read_settings()
@@ -701,7 +807,9 @@ def test_prop22_settings_fallback_missing_key():
     with tempfile.TemporaryDirectory() as tmpdir:
         settings_dir = os.path.join(tmpdir, "Morphix")
         os.makedirs(settings_dir, exist_ok=True)
-        with open(os.path.join(settings_dir, "settings.json"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(settings_dir, "settings.json"), "w", encoding="utf-8"
+        ) as f:
             json.dump({}, f)
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             result = read_settings()
@@ -713,9 +821,12 @@ def test_prop22_settings_fallback_missing_key():
 # Validates: Requirements 21.1, 21.2, 21.3
 # ---------------------------------------------------------------------------
 
+
 @given(
     file_size_bytes=st.integers(min_value=1, max_value=10_000_000),
-    target_mb=st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False),
+    target_mb=st.floats(
+        min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False
+    ),
 )
 def test_prop23_target_exceeds_file_size_raises(file_size_bytes, target_mb):
     """Property 23: when target_mb >= file_size_mb, raises ValueError; otherwise does not raise.
@@ -740,9 +851,12 @@ def test_prop23_target_exceeds_file_size_raises(file_size_bytes, target_mb):
 # Validates: Requirements 22.1, 22.4, 22.5
 # ---------------------------------------------------------------------------
 
+
 @given(
     file_size_bytes=st.integers(min_value=1, max_value=100_000_000),
-    target_mb=st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False),
+    target_mb=st.floats(
+        min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False
+    ),
 )
 def test_prop24_low_ratio_warning_threshold(file_size_bytes, target_mb):
     """Property 24: returns True iff target_mb < 0.03 * file_size_mb.

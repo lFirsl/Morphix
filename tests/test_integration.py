@@ -4,12 +4,18 @@ import subprocess
 from unittest.mock import patch
 
 import pytest
+
 from morphix_core.core import find_ffmpeg_binaries, run
 
 pytestmark = pytest.mark.integration
 
 TEST_VIDEO = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", ".example_videos", "Splatoon 3 - Test Compression File.mp4")
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        ".example_videos",
+        "Splatoon 3 - Test Compression File.mp4",
+    )
 )
 TARGET_MB = 5
 
@@ -31,8 +37,12 @@ def test_output_file_created_at_expected_path(tmp_path):
     input_copy = str(tmp_path / "input.mp4")
     shutil.copy2(TEST_VIDEO, input_copy)
 
-    output_path = run(input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True)
-    assert os.path.isfile(output_path), f"Expected output file at {output_path} but it was not created"
+    output_path = run(
+        input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True
+    )
+    assert os.path.isfile(output_path), (
+        f"Expected output file at {output_path} but it was not created"
+    )
 
 
 @pytest.mark.integration
@@ -45,7 +55,9 @@ def test_output_file_size_within_10_percent_of_target(tmp_path):
     input_copy = str(tmp_path / "input.mp4")
     shutil.copy2(TEST_VIDEO, input_copy)
 
-    output_path = run(input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True)
+    output_path = run(
+        input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True
+    )
 
     target_bytes = TARGET_MB * 1_000_000
     actual_bytes = os.path.getsize(output_path)
@@ -64,7 +76,9 @@ def test_output_file_is_valid_mp4(tmp_path):
     input_copy = str(tmp_path / "input.mp4")
     shutil.copy2(TEST_VIDEO, input_copy)
 
-    output_path = run(input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True)
+    output_path = run(
+        input_copy, max_mb=TARGET_MB, overwrite=True, progress=False, disable_logs=True
+    )
 
     result = subprocess.run(
         [ffprobe_path, "-v", "error", output_path],
@@ -96,6 +110,7 @@ def test_passlog_files_cleaned_up_after_compression(tmp_path):
 # ===========================================================================
 # Trim Feature Integration Tests (Requirements Trim-5 through Trim-8)
 # ===========================================================================
+
 
 @pytest.mark.integration
 def test_trim_direct_copy_output_fits_within_target(tmp_path):
@@ -146,9 +161,11 @@ def test_trim_encode_produces_output(tmp_path):
 
     import morphix_core.core as core_mod
 
-    with patch.object(core_mod, "RunContext", FakeCtx), \
-         patch("morphix_core.cli.check_target_exceeds_file_size"), \
-         patch("morphix_core.cli.check_low_compression_ratio", return_value=False):
+    with (
+        patch.object(core_mod, "RunContext", FakeCtx),
+        patch("morphix_core.cli.check_target_exceeds_file_size"),
+        patch("morphix_core.cli.check_low_compression_ratio", return_value=False),
+    ):
         output_path = run(
             input_copy,
             max_mb=1,

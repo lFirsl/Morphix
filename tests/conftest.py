@@ -1,4 +1,4 @@
-from hypothesis import settings, HealthCheck
+from hypothesis import HealthCheck, settings
 
 settings.register_profile(
     "morphix",

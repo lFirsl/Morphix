@@ -46,5 +46,8 @@ def check_trim_values(start: float | None, end: float | None, full_duration: flo
     if end <= start:
         return False, "End time must be greater than Start time."
     if (end - start) > full_duration:
-        return False, f"Trim duration ({end - start:.1f}s) exceeds video duration ({full_duration:.1f}s)."
+        return (
+            False,
+            f"Trim duration ({end - start:.1f}s) exceeds video duration ({full_duration:.1f}s).",
+        )
     return True, None

@@ -53,10 +53,19 @@ class MorphixUI(tk.Tk):
         self.size_var = tk.StringVar(value="20")
         self.unit_var = tk.StringVar(value="MB")
         self.device_options = get_available_devices()
-        self.device_label_to_key = {label: key for key, label in self.device_options}
-        default_device_label = (
-            self.device_options[0][1] if self.device_options else "CPU"
-        )
+        self.device_label_to_key = {}
+        self._unavailable_devices = set()
+        for key, label, available in self.device_options:
+            if available:
+                self.device_label_to_key[label] = key
+            else:
+                disabled_label = f"{label} (not detected)"
+                self.device_label_to_key[disabled_label] = key
+                self._unavailable_devices.add(disabled_label)
+        available_labels = [
+            label for key, label, avail in self.device_options if avail
+        ]
+        default_device_label = available_labels[0] if available_labels else "CPU"
         self.device_var = tk.StringVar(value=default_device_label)
         self.encoder_var = tk.StringVar(value="Auto")
         self.advanced_var = tk.BooleanVar(value=False)
@@ -92,6 +101,15 @@ class MorphixUI(tk.Tk):
         """Construct and grid all widgets. No event logic here."""
         padding = {"padx": 10, "pady": 6}
         self.grid_columnconfigure(1, weight=1)
+
+        # Menu bar
+        menubar = tk.Menu(self)
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(
+            label="About FFmpeg", command=self._open_about_ffmpeg
+        )
+        menubar.add_cascade(label="Help", menu=help_menu)
+        self.config(menu=menubar)
 
         self._build_input_row(padding)
         self._build_output_row(padding)
@@ -157,8 +175,9 @@ class MorphixUI(tk.Tk):
             row=0, column=0, sticky="w", padx=(15, 4), pady=2
         )
         self.device_menu = tk.OptionMenu(
-            self.advanced_frame, self.device_var, *self.device_label_to_key.keys()
+            self.advanced_frame, self.device_var, ""
         )
+        self._refresh_device_menu()
         self.device_menu.grid(row=0, column=1, sticky="w", pady=2)
 
         tk.Label(self.advanced_frame, text="Encoder").grid(
@@ -170,6 +189,21 @@ class MorphixUI(tk.Tk):
 
         # Update encoder availability when device changes.
         self.device_var.trace_add("write", lambda *_: self._refresh_encoder_menu())
+
+    def _refresh_device_menu(self):
+        """Populate device dropdown, greying out unavailable options."""
+        menu = self.device_menu["menu"]
+        menu.delete(0, "end")
+        for label in self.device_label_to_key:
+            if label in self._unavailable_devices:
+                menu.add_command(
+                    label=label, state="disabled"
+                )
+            else:
+                menu.add_command(
+                    label=label,
+                    command=lambda v=label: self.device_var.set(v),
+                )
 
     def _build_encoder_menu(self):
         """Build the encoder OptionMenu with greyed-out unavailable items."""
@@ -640,23 +674,37 @@ class MorphixUI(tk.Tk):
         self.device_status.config(text=f"Device: {device_label}")
 
     def _refresh_ffmpeg_label(self):
-        # Detect whether bundled or PATH ffmpeg binaries are being used.
+        # Detect which ffmpeg is being used and display info.
         ffmpeg_path, _, source = find_ffmpeg_binaries()
         version = get_ffmpeg_version(ffmpeg_path)
         build = detect_build_type(ffmpeg_path)
-        if source == "bundled":
-            label = "bundled"
+        if source == "user":
+            label = "user-provided"
         elif source == "path":
             label = "system PATH"
+        elif source == "bundled":
+            label = "bundled"
         else:
             label = "missing"
         self.ffmpeg_status.config(
-            text=f"FFmpeg: {label} (Version: {version}, Build: {build})"
+            text=(
+                f"FFmpeg: {label} ({version}, {build})"
+                " — See Help → About FFmpeg"
+            )
         )
 
     def _get_device_preference(self):
         # Map the selected label to a device key for the core logic.
         return self.device_label_to_key.get(self.device_var.get(), "auto")
+
+    def _open_about_ffmpeg(self):
+        """Open the About FFmpeg dialog."""
+        from morphix_ui.ffmpeg_download import show_about_ffmpeg
+
+        ffmpeg_path, _, source = find_ffmpeg_binaries()
+        version = get_ffmpeg_version(ffmpeg_path)
+        build = detect_build_type(ffmpeg_path)
+        show_about_ffmpeg(self, ffmpeg_path, version, build, source)
 
     # -------------------------------------------------------------------------
     # Output path helpers

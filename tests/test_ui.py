@@ -137,6 +137,7 @@ _tk_mod.OptionMenu = _FakeWidget
 _tk_mod.Frame = _FakeWidget
 _tk_mod.Message = _FakeWidget
 _tk_mod.Toplevel = _FakeWidget
+_tk_mod.Menu = _FakeWidget
 
 _filedialog_mod = types.ModuleType("tkinter.filedialog")
 _filedialog_mod.askopenfilename = MagicMock(return_value="")
@@ -161,7 +162,7 @@ def _core_patches():
     """Return a patch.multiple context manager for all morphix_core.core functions."""
     return patch.multiple(
         "morphix_core.core",
-        get_available_devices=MagicMock(return_value=[("cpu", "CPU")]),
+        get_available_devices=MagicMock(return_value=[("cpu", "CPU", True)]),
         find_ffmpeg_binaries=MagicMock(
             return_value=("/fake/ffmpeg", "/fake/ffprobe", "bundled")
         ),

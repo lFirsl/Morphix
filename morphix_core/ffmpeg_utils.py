@@ -13,26 +13,38 @@ def popen_no_window_kwargs():
 
 
 def find_ffmpeg_binaries():
-    # Prefer bundled binaries; fall back to PATH when not found.
-    candidates = []
+    # Priority: user-provided → PATH → bundled fallback.
     bundle_root = getattr(sys, "_MEIPASS", None)
-    if bundle_root:
-        candidates.append(os.path.join(bundle_root, "ffmpeg"))
-    candidates.append(os.path.join(os.path.dirname(sys.executable), "ffmpeg"))
-    candidates.append(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ffmpeg"))
-    )
 
-    for base in candidates:
+    user_candidates = [
+        os.path.join(os.path.dirname(sys.executable), "ffmpeg"),
+        os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "ffmpeg")
+        ),
+    ]
+
+    for base in user_candidates:
+        # Skip if this resolves to inside the PyInstaller bundle.
+        if bundle_root and os.path.abspath(base).startswith(
+            os.path.abspath(bundle_root)
+        ):
+            continue
         ffmpeg_path = os.path.join(base, "ffmpeg.exe")
         ffprobe_path = os.path.join(base, "ffprobe.exe")
         if os.path.isfile(ffmpeg_path) and os.path.isfile(ffprobe_path):
-            return ffmpeg_path, ffprobe_path, "bundled"
+            return ffmpeg_path, ffprobe_path, "user"
 
     ffmpeg_path = shutil.which("ffmpeg")
     ffprobe_path = shutil.which("ffprobe")
     if ffmpeg_path and ffprobe_path:
         return ffmpeg_path, ffprobe_path, "path"
+
+    if bundle_root:
+        base = os.path.join(bundle_root, "ffmpeg")
+        ffmpeg_path = os.path.join(base, "ffmpeg.exe")
+        ffprobe_path = os.path.join(base, "ffprobe.exe")
+        if os.path.isfile(ffmpeg_path) and os.path.isfile(ffprobe_path):
+            return ffmpeg_path, ffprobe_path, "bundled"
 
     return None, None, "missing"
 

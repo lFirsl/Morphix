@@ -689,7 +689,7 @@ def test_get_available_devices_always_ends_with_cpu():
         patch("morphix_core.gpu_detection.detect_intel", return_value=False),
     ):
         devices = get_available_devices()
-    assert devices[-1] == ("cpu", "CPU")
+    assert devices[-1] == ("cpu", "CPU", True)
 
 
 def test_get_available_devices_ends_with_cpu_when_nvidia_present():
@@ -700,8 +700,8 @@ def test_get_available_devices_ends_with_cpu_when_nvidia_present():
         patch("morphix_core.gpu_detection.detect_intel", return_value=False),
     ):
         devices = get_available_devices()
-    assert devices[-1] == ("cpu", "CPU")
-    assert ("nvidia", "NVIDIA GPU") in devices
+    assert devices[-1] == ("cpu", "CPU", True)
+    assert ("nvidia", "NVIDIA GPU", True) in devices
 
 
 def test_get_available_devices_gpu_first_cpu_last():
@@ -712,19 +712,20 @@ def test_get_available_devices_gpu_first_cpu_last():
         patch("morphix_core.gpu_detection.detect_intel", return_value=False),
     ):
         devices = get_available_devices()
-    keys = [k for k, _ in devices]
+    keys = [k for k, _, _ in devices]
     assert keys.index("nvidia") < keys.index("cpu")
 
 
 def test_get_available_devices_only_cpu_when_no_gpu():
-    """get_available_devices() returns only [('cpu', 'CPU')] when no GPU detected."""
+    """All devices returned; GPUs marked unavailable when not detected."""
     with (
         patch("morphix_core.gpu_detection.detect_cuda", return_value=False),
         patch("morphix_core.gpu_detection.detect_amd", return_value=False),
         patch("morphix_core.gpu_detection.detect_intel", return_value=False),
     ):
         devices = get_available_devices()
-    assert devices == [("cpu", "CPU")]
+    assert devices[-1] == ("cpu", "CPU", True)
+    assert ("nvidia", "NVIDIA GPU", False) in devices
 
 
 def test_get_available_devices_swallows_exceptions_still_ends_with_cpu():
@@ -735,7 +736,7 @@ def test_get_available_devices_swallows_exceptions_still_ends_with_cpu():
         patch("morphix_core.gpu_detection.detect_intel", side_effect=Exception("err")),
     ):
         devices = get_available_devices()
-    assert devices[-1] == ("cpu", "CPU")
+    assert devices[-1] == ("cpu", "CPU", True)
 
 
 # --- resolve_device_info (Requirement 5.9) ---
@@ -837,7 +838,7 @@ def _make_isfile(present_dirs):
 
 
 def test_find_ffmpeg_binaries_returns_bundled_when_meipass_has_both(tmp_path):
-    """Returns first candidate (MEIPASS) with both binaries and source 'bundled'."""
+    """Returns bundled (MEIPASS) when no user override or PATH exists."""
     bundle = str(tmp_path / "bundle" / "ffmpeg")
     ffmpeg_exe = os.path.join(bundle, "ffmpeg.exe")
     ffprobe_exe = os.path.join(bundle, "ffprobe.exe")
@@ -845,6 +846,7 @@ def test_find_ffmpeg_binaries_returns_bundled_when_meipass_has_both(tmp_path):
     with (
         patch("morphix_core.ffmpeg_utils.sys") as mock_sys,
         patch("morphix_core.ffmpeg_utils.os.path.isfile") as mock_isfile,
+        patch("morphix_core.ffmpeg_utils.shutil.which", return_value=None),
     ):
         mock_sys._MEIPASS = str(tmp_path / "bundle")
         mock_sys.executable = "/some/python.exe"
@@ -881,7 +883,7 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffprobe(tmp_path):
 
         result = find_ffmpeg_binaries()
 
-    assert result == (ffmpeg_exe2, ffprobe_exe2, "bundled")
+    assert result == (ffmpeg_exe2, ffprobe_exe2, "user")
 
 
 def test_find_ffmpeg_binaries_skips_candidate_missing_ffmpeg(tmp_path):
@@ -909,7 +911,7 @@ def test_find_ffmpeg_binaries_skips_candidate_missing_ffmpeg(tmp_path):
 
         result = find_ffmpeg_binaries()
 
-    assert result == (ffmpeg_exe2, ffprobe_exe2, "bundled")
+    assert result == (ffmpeg_exe2, ffprobe_exe2, "user")
 
 
 def test_find_ffmpeg_binaries_falls_back_to_path_when_no_candidate_has_both():
@@ -946,7 +948,7 @@ def test_find_ffmpeg_binaries_returns_missing_when_no_binaries_anywhere():
 
 
 def test_find_ffmpeg_binaries_meipass_checked_first(tmp_path):
-    """_MEIPASS candidate is checked before the Python executable directory."""
+    """User folder (exe dir) is checked before _MEIPASS bundled."""
     bundle = str(tmp_path / "bundle" / "ffmpeg")
     ffmpeg_bundle = os.path.join(bundle, "ffmpeg.exe")
     ffprobe_bundle = os.path.join(bundle, "ffprobe.exe")
@@ -955,7 +957,7 @@ def test_find_ffmpeg_binaries_meipass_checked_first(tmp_path):
     ffmpeg_exe = os.path.join(exe_dir, "ffmpeg.exe")
     ffprobe_exe = os.path.join(exe_dir, "ffprobe.exe")
 
-    # Both candidates have both binaries; MEIPASS should win.
+    # Both candidates have both binaries; user (exe dir) should win.
     def isfile(p):
         return p in (ffmpeg_bundle, ffprobe_bundle, ffmpeg_exe, ffprobe_exe)
 
@@ -968,7 +970,7 @@ def test_find_ffmpeg_binaries_meipass_checked_first(tmp_path):
 
         result = find_ffmpeg_binaries()
 
-    assert result == (ffmpeg_bundle, ffprobe_bundle, "bundled")
+    assert result == (ffmpeg_exe, ffprobe_exe, "user")
 
 
 def test_find_ffmpeg_binaries_no_meipass_uses_exe_dir(tmp_path):
@@ -990,7 +992,7 @@ def test_find_ffmpeg_binaries_no_meipass_uses_exe_dir(tmp_path):
 
         result = find_ffmpeg_binaries()
 
-    assert result == (ffmpeg_exe, ffprobe_exe, "bundled")
+    assert result == (ffmpeg_exe, ffprobe_exe, "user")
 
 
 # ---------------------------------------------------------------------------

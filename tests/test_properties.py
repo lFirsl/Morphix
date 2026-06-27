@@ -424,7 +424,7 @@ def test_prop19_cpu_always_in_device_list(has_nvidia, has_amd, has_intel):
         patch("morphix_core.gpu_detection.detect_intel", return_value=has_intel),
     ):
         devices = get_available_devices()
-    assert devices[-1] == ("cpu", "CPU")
+    assert devices[-1] == ("cpu", "CPU", True)
 
 
 # ---------------------------------------------------------------------------

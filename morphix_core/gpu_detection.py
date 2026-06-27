@@ -124,28 +124,31 @@ def detect_device_info():
 
 
 def get_available_devices():
-    # Return available device options in preferred order, GPU-first, CPU last.
+    # Return all device options with availability flag.
     devices = []
 
+    nvidia_available = False
     try:
-        if detect_cuda():
-            devices.append(("nvidia", "NVIDIA GPU"))
+        nvidia_available = detect_cuda()
     except Exception:
         pass
+    devices.append(("nvidia", "NVIDIA GPU", nvidia_available))
 
+    amd_available = False
     try:
-        if detect_amd():
-            devices.append(("amd", "AMD GPU"))
+        amd_available = detect_amd()
     except Exception:
         pass
+    devices.append(("amd", "AMD GPU", amd_available))
 
+    intel_available = False
     try:
-        if detect_intel():
-            devices.append(("intel", "Intel GPU"))
+        intel_available = detect_intel()
     except Exception:
         pass
+    devices.append(("intel", "Intel GPU", intel_available))
 
-    devices.append(("cpu", "CPU"))
+    devices.append(("cpu", "CPU", True))
     return devices
 
 

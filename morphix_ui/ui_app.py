@@ -686,12 +686,21 @@ class MorphixUI(tk.Tk):
             label = "bundled"
         else:
             label = "missing"
-        self.ffmpeg_status.config(
-            text=(
-                f"FFmpeg: {label} ({version}, {build})"
-                " — See Help → About FFmpeg"
+
+        if source == "missing":
+            self.ffmpeg_status.config(
+                text="FFmpeg: not found — See Help → About FFmpeg"
             )
-        )
+            self.compress_btn.config(state="disabled")
+        else:
+            self.ffmpeg_status.config(
+                text=(
+                    f"FFmpeg: {label} ({version}, {build})"
+                    " — See Help → About FFmpeg"
+                )
+            )
+            if not self._is_running:
+                self.compress_btn.config(state="normal")
 
     def _get_device_preference(self):
         # Map the selected label to a device key for the core logic.

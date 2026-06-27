@@ -108,7 +108,7 @@ class RunContext:
             )
         print(f"Encoder: {self.encoder_name} (strategy: {self.encoder_strategy})")
 
-        if self.encoder_name == "libopenh264":
+        if self.encoder_name == "libopenh264" and not self.encoder_override:
             self.encoder_warning = OPENH264_WARNING
             print(self.encoder_warning, file=sys.stderr)
             if self.warning_cb:

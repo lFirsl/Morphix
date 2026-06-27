@@ -125,6 +125,7 @@ def detect_device_info():
 
 def get_available_devices():
     # Return all device options with availability flag.
+    # NOTE: AMD and Intel support is scaffolded but not exposed yet.
     devices = []
 
     nvidia_available = False
@@ -133,20 +134,6 @@ def get_available_devices():
     except Exception:
         pass
     devices.append(("nvidia", "NVIDIA GPU", nvidia_available))
-
-    amd_available = False
-    try:
-        amd_available = detect_amd()
-    except Exception:
-        pass
-    devices.append(("amd", "AMD GPU", amd_available))
-
-    intel_available = False
-    try:
-        intel_available = detect_intel()
-    except Exception:
-        pass
-    devices.append(("intel", "Intel GPU", intel_available))
 
     devices.append(("cpu", "CPU", True))
     return devices

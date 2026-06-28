@@ -696,6 +696,7 @@ def test_get_available_devices_ends_with_cpu_when_nvidia_present():
     """get_available_devices() ends with ('cpu', 'CPU') even when NVIDIA is detected."""
     with (
         patch("morphix_core.gpu_detection.detect_cuda", return_value=True),
+        patch("morphix_core.gpu_detection.check_nvenc_usable", return_value=True),
         patch("morphix_core.gpu_detection.detect_amd", return_value=False),
         patch("morphix_core.gpu_detection.detect_intel", return_value=False),
     ):
@@ -708,6 +709,7 @@ def test_get_available_devices_gpu_first_cpu_last():
     """GPU entries appear before CPU in get_available_devices()."""
     with (
         patch("morphix_core.gpu_detection.detect_cuda", return_value=True),
+        patch("morphix_core.gpu_detection.check_nvenc_usable", return_value=True),
         patch("morphix_core.gpu_detection.detect_amd", return_value=False),
         patch("morphix_core.gpu_detection.detect_intel", return_value=False),
     ):
@@ -725,7 +727,7 @@ def test_get_available_devices_only_cpu_when_no_gpu():
     ):
         devices = get_available_devices()
     assert devices[-1] == ("cpu", "CPU", True)
-    assert ("nvidia", "NVIDIA GPU", False) in devices
+    assert ("nvidia", "NVIDIA GPU (not detected)", False) in devices
 
 
 def test_get_available_devices_swallows_exceptions_still_ends_with_cpu():

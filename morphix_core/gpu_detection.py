@@ -2,7 +2,29 @@ import os
 import shutil
 import subprocess
 
-from morphix_core.ffmpeg_utils import popen_no_window_kwargs
+from morphix_core.ffmpeg_utils import find_ffmpeg_binaries, popen_no_window_kwargs
+
+
+def check_nvenc_usable(ffmpeg_path=None):
+    """Probe whether h264_nvenc actually works (drivers new enough)."""
+    if not ffmpeg_path:
+        ffmpeg_path, _, _ = find_ffmpeg_binaries()
+    if not ffmpeg_path:
+        return False
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg_path, "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "nullsrc=s=256x256:d=0.1",
+                "-c:v", "h264_nvenc", "-f", "null", "NUL",
+            ],
+            check=False,
+            capture_output=True,
+            **popen_no_window_kwargs(),
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
 
 
 def detect_cuda():
@@ -129,11 +151,18 @@ def get_available_devices():
     devices = []
 
     nvidia_available = False
+    nvidia_label = "NVIDIA GPU"
     try:
-        nvidia_available = detect_cuda()
+        if detect_cuda():
+            if check_nvenc_usable():
+                nvidia_available = True
+            else:
+                nvidia_label = "NVIDIA GPU (update drivers or ffmpeg)"
+        else:
+            nvidia_label = "NVIDIA GPU (not detected)"
     except Exception:
-        pass
-    devices.append(("nvidia", "NVIDIA GPU", nvidia_available))
+        nvidia_label = "NVIDIA GPU (not detected)"
+    devices.append(("nvidia", nvidia_label, nvidia_available))
 
     devices.append(("cpu", "CPU", True))
     return devices

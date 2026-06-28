@@ -59,9 +59,8 @@ class MorphixUI(tk.Tk):
             if available:
                 self.device_label_to_key[label] = key
             else:
-                disabled_label = f"{label} (not detected)"
-                self.device_label_to_key[disabled_label] = key
-                self._unavailable_devices.add(disabled_label)
+                self.device_label_to_key[label] = key
+                self._unavailable_devices.add(label)
         available_labels = [
             label for key, label, avail in self.device_options if avail
         ]

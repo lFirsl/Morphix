@@ -1,111 +1,58 @@
 # Morphix
 
-A Windows desktop video compression app wrapping ffmpeg. Compresses videos to a user-specified target size using intelligent encoder selection and two-pass encoding.
+Compress any video to a target file size — in one click.
 
-![](docs/BasicLogic.png)
+![](docs/demo.gif)
+
+## What it does
+
+Morphix wraps ffmpeg into a simple interface to allow you to:
+
+1. Pick a video
+2. Set a target size in MB
+3. Hit Compress
+
+It automatically selects the best encoder available on your system and handles two-pass encoding, bitrate calculation, and resolution scaling.
+
+## Download
+
+Grab the latest release from the [Releases page](https://github.com/lFirsl/Morphix/releases).
+
+| Version | What's included |
+|---------|----------------|
+| **Morphix UI** | Full package — includes ffmpeg, works out of the box |
+| **Morphix UI Lite** | Smaller download — bring your own ffmpeg (see Help → About FFmpeg in-app) |
+| **Morphix CLI** | Command-line interface for scripting and automation |
+
+## Quick Start
+
+1. Download **Morphix UI** from the latest release
+2. Extract and run `Morphix_UI.exe`
+3. Select a video, set your target size, click **Compress**
+
+That's it. Output is saved next to the original file.
 
 ## Features
 
-- **One-button compression** — specify a target size in MB and Morphix handles the rest
-- **Smart encoder selection** — automatically picks the best available encoder:
-  - NVIDIA NVENC (multipass) when a GPU is available
-  - libx264 (two-pass) when a GPL ffmpeg is on PATH
-  - OpenH264 (single-pass with safety margin) as LGPL fallback
-- **Trim & compress** — extract a segment with start/end times, compress in one step
-- **Three entry points** — CLI, Tkinter GUI, and Windows Explorer context menu
-- **LGPL-compliant** — ships with an LGPL ffmpeg build (OpenH264); users can bring their own GPL ffmpeg for libx264
+- **Target size compression** — specify an exact file size in MB or GB
+- **Smart encoder selection** — NVIDIA NVENC → libx264 → OpenH264, picked automatically
+- **Trim & compress** — set start/end times to extract and compress a segment
+- **GPU acceleration** — uses NVENC multipass when an NVIDIA GPU is detected
+- **Bring your own ffmpeg** — drop a GPL ffmpeg build next to the app for libx264 support
+- **CLI & GUI** — use whichever fits your workflow
+- **Windows Explorer integration** — right-click context menu (MSIX install)
 
-## Setup
+## Requirements
 
-Create and activate the conda environment:
+- Windows 10 or later
+- **Lite version only:** ffmpeg on PATH or in a `ffmpeg/` folder next to the EXE
 
-```bash
-conda create --name morphix python=3.13
-conda activate morphix
-```
+## For Developers
 
-Install dependencies:
+See [docs/development.md](docs/development.md) for setup, building, testing, and project structure.
 
-```bash
-pip install -r requirements.txt
-```
+## License
 
-### FFmpeg binaries
+AGPL-3.0. See [LICENSE](LICENSE).
 
-The bundled ffmpeg binaries are gitignored. Run the download script to fetch the LGPL build:
-
-```bash
-python scripts/download_ffmpeg.py
-```
-
-Alternatively, install ffmpeg via Chocolatey (`choco install ffmpeg`) — the app falls back to system PATH.
-
-## Usage
-
-### CLI
-
-```bash
-python Morphix.py input.mp4 --max-mb 8
-python Morphix.py input.mp4 --max-mb 8 --start 10 --end 30 --output trimmed.mp4
-```
-
-### UI
-
-```bash
-python morphix_ui/ui_app.py
-```
-
-Or run the built EXE:
-
-```bash
-.\dist\Morphix_UI.exe
-```
-
-## Building
-
-Builds use `.spec` files at the project root. Run from the `morphix` conda environment:
-
-```bash
-conda run -n morphix python -m PyInstaller Morphix_CLI.spec
-conda run -n morphix python -m PyInstaller Morphix_UI.spec
-```
-
-Output lands in `dist/`.
-
-## Linting & Testing
-
-```bash
-ruff check .
-pytest tests/ -x --tb=short -q
-```
-
-Integration tests require ffmpeg on PATH or in `ffmpeg_binaries/bin/`:
-
-```bash
-pytest tests/ -m integration
-```
-
-## CI
-
-- **`.github/workflows/ci.yml`** — lint + unit tests on every push/PR to main (only when `.py` files change)
-- **`.github/workflows/build.yml`** — full build on tagged releases (`v*`) or manual dispatch; attaches EXEs to the GitHub Release
-
-## Project Structure
-
-```
-morphix_core/       Core compression logic (encoding, bitrate, GPU detection, encoder selection)
-morphix_ui/         Tkinter GUI
-tests/              Unit, property-based, and integration tests
-ContextMenuWrl/     Windows Explorer context menu COM DLL (C++)
-msix/               MSIX packaging (see docs/msix.md)
-ffmpeg_binaries/    Gitignored; place ffmpeg.exe + ffprobe.exe in bin/
-```
-
-## Context Menu & MSIX Packaging
-
-See [docs/msix.md](docs/msix.md) for COM DLL build instructions, MSIX packaging, and certificate setup.
-
-
-## AI Assistance
-
-This project was developed with the assistance of AI agents. Steering files are provided in `.kiro/` to help developers, maintainers, and contributors work with AI tooling on this codebase.
+The bundled ffmpeg binary is the latest available LGPL build at the time of release. Users may provide their own GPL ffmpeg for additional encoder support (libx264).

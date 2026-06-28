@@ -44,3 +44,4 @@ ffmpeg_binaries/*
 !ffmpeg_binaries/README.md
 
 .hypothesis
+docs/demo.mp4

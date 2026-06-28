@@ -54,7 +54,7 @@ jobs:
       - name: Build UI
         run: python -m PyInstaller Morphix_UI.spec
 
-      - name: Build UI Portable (no ffmpeg)
+      - name: Build UI Lite (no ffmpeg)
         run: python -m PyInstaller Morphix_UI_Portable.spec
 
       - name: Upload CLI artifact
@@ -69,10 +69,10 @@ jobs:
           name: morphix-windows-ui
           path: dist/Morphix_UI.exe
 
-      - name: Upload UI Portable artifact
+      - name: Upload UI Lite artifact
         uses: actions/upload-artifact@v7
         with:
-          name: morphix-windows-ui-portable
+          name: morphix-windows-ui-lite
           path: dist/Morphix_UI_Portable.exe
 
       - name: Zip release assets
@@ -81,7 +81,7 @@ jobs:
         run: |
           Compress-Archive dist/Morphix_CLI.exe morphix-windows-cli.zip
           Compress-Archive dist/Morphix_UI.exe morphix-windows-ui.zip
-          Compress-Archive dist/Morphix_UI_Portable.exe morphix-windows-ui-portable.zip
+          Compress-Archive dist/Morphix_UI_Portable.exe morphix-windows-ui-lite.zip
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -90,4 +90,4 @@ jobs:
           files: |
             morphix-windows-cli.zip
             morphix-windows-ui.zip
-            morphix-windows-ui-portable.zip
+            morphix-windows-ui-lite.zip

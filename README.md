@@ -1,6 +1,6 @@
 # Morphix
 
-Compress any video to a target file size — in one click.
+Simple, lightweight app to compress any video to a target file size — in one click.
 
 ![](docs/demo.gif)
 

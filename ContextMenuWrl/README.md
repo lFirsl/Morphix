@@ -1,5 +1,7 @@
 # Morphix WRL context menu handler
 
+> **Note:** The context menu handler is incomplete and not yet ready for production use.
+
 This is a barebones WRL COM DLL implementing `IExplorerCommand` for the Windows 11
 top‑level context menu.
 

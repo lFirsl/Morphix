@@ -1,5 +1,7 @@
 # Morphix MSIX package
 
+> **Note:** MSIX packaging is incomplete and not yet ready for production use.
+
 This folder is the MSIX payload root. Put all packaged binaries here:
 
 - `Morphix.exe`

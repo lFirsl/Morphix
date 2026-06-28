@@ -88,6 +88,13 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
+          append_body: true
+          body: |
+            | Version | What's included |
+            |---------|----------------|
+            | **Morphix UI** | Full package — includes ffmpeg, works out of the box |
+            | **Morphix UI Lite** | Smaller download — bring your own ffmpeg (see Help → About FFmpeg in-app) |
+            | **Morphix CLI** | Command-line interface for scripting and automation |
           files: |
             morphix-windows-cli.zip
             morphix-windows-ui.zip

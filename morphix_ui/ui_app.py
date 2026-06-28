@@ -43,8 +43,8 @@ class MorphixUI(tk.Tk):
     def __init__(self, input_file=None):
         super().__init__()
         self.title("Morphix")
-        self.geometry("560x440")
-        self.minsize(520, 440)
+        self.geometry("560x520")
+        self.minsize(520, 520)
         self.resizable(True, True)
 
         # --- State variables ---
@@ -106,6 +106,9 @@ class MorphixUI(tk.Tk):
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(
             label="About FFmpeg", command=self._open_about_ffmpeg
+        )
+        help_menu.add_command(
+            label="About Morphix", command=self._open_about_morphix
         )
         menubar.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menubar)
@@ -713,6 +716,17 @@ class MorphixUI(tk.Tk):
         version = get_ffmpeg_version(ffmpeg_path)
         build = detect_build_type(ffmpeg_path)
         show_about_ffmpeg(self, ffmpeg_path, version, build, source)
+
+    def _open_about_morphix(self):
+        """Show About Morphix dialog with version info."""
+        from morphix_core import __version__
+
+        messagebox.showinfo(
+            "About Morphix",
+            f"Morphix v{__version__}\n\n"
+            "Compress any video to a target file size.\n\n"
+            "https://github.com/lFirsl/Morphix",
+        )
 
     # -------------------------------------------------------------------------
     # Output path helpers

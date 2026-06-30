@@ -6,16 +6,33 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 
 ## Architecture
 
-- `morphix_core/core.py` is a **re-export facade** — imports from submodules plus one thin `run()` function that instantiates `RunContext` and calls `.execute()`.
-- Submodules: `ffmpeg_utils.py`, `gpu_detection.py`, `encoding.py`, `encoder_selection.py`, `bitrate.py`, `settings.py`, `validation.py`
-- `morphix_core/encoding.py` contains the `RunContext` class (all per-run state and execution).
-- `morphix_core/encoder_selection.py` contains encoder priority list, `select_encoder()`, and `OPENH264_WARNING`.
-- `morphix_ui/main_window.py` is the Tkinter GUI (`MorphixUI(tk.Tk)`). Layout in `_build_ui()` and helper methods; event logic in separate methods.
-- `morphix_core/cli.py` + `morphix_core/cli_args.py` is the CLI entry point. Entry: `python -m morphix_core.cli` or `Morphix.py` (which imports cli.main).
-- `ContextMenuWrl/` is a 64-bit WRL-based C++ COM DLL implementing `IExplorerCommand` (two commands: "Compress with Morphix" and "Open in Morphix").
-- `msix/` contains the MSIX manifest, assets, built EXE, and DLL.
-- `scripts/build_msix.ps1` handles the full MSIX build+sign pipeline.
-- `scripts/download_ffmpeg.py` downloads LGPL ffmpeg binaries from BtbN into `ffmpeg_binaries/bin/`.
+### Core (`morphix_core/`)
+
+- `config.py` — frozen `CompressConfig` dataclass (all user-facing parameters for a run). Also contains `parse_resolution()` utility.
+- `core.py` — **re-export facade** for external interfaces. Thin `run()` function accepts kwargs or a `CompressConfig` directly, instantiates `RunContext`, and calls `.execute()`.
+- `encoding.py` — `RunContext` class. Accepts a `CompressConfig`, holds mutable runtime state, and orchestrates the full compression pipeline. Contains `_build_output_stream()` / `_build_analysis_stream()` helpers to eliminate repeated ffmpeg stream-building. Strategy dispatch via dict lookup.
+- `encoder_selection.py` — `ENCODER_PRIORITY` list, `select_encoder()`, `OPENH264_WARNING`, `SAFETY_MARGIN`.
+- `ffmpeg_utils.py` — `find_ffmpeg_binaries()`, `ffprobe_media()`, `detect_available_encoders()`, `detect_build_type()`, `get_ffmpeg_version()`, `popen_no_window_kwargs()`.
+- `gpu_detection.py` — vendor registry pattern (`_VENDORS` list). Per-vendor detection functions (`detect_cuda`, `detect_amd`, `detect_intel`). Public API: `detect_device_info()`, `resolve_device_info()`, `get_available_devices()`, `check_nvenc_usable()`.
+- `bitrate.py` — `target_kbps_for_size_mb()`, `compute_scaled_resolution()`, `parse_fps()`, `clamp_even()`.
+- `settings.py` — `read_settings()`, `write_settings()` for `%APPDATA%\Morphix\settings.json`.
+- `validation.py` — `check_target_exceeds_file_size()`, `check_low_compression_ratio()`, `check_trim_values()`.
+- `cli.py` + `cli_args.py` — CLI entry point. Entry: `python -m morphix_core.cli` or `Morphix.py`.
+
+### UI (`morphix_ui/`)
+
+- `main_window.py` — `MorphixUI(tk.Tk)` class. Layout in `_build_ui()` and helper methods. Handles user input validation and delegates compression to `compression_worker`.
+- `widgets.py` — reusable Tkinter helpers: `set_widgets_state()`, `show_error()`, `show_warning()`, `set_status()`.
+- `dialogs.py` — modal dialogs: `show_settings_dialog()`, `show_about_morphix()`.
+- `compression_worker.py` — `CompressionCallbacks` dataclass and `start_compression()` thread launcher. Encapsulates background thread, encoder resolution, and progress dispatch.
+- `ffmpeg_download.py` — GPL ffmpeg download helper and "About FFmpeg" dialog.
+
+### Other
+
+- `ContextMenuWrl/` — 64-bit WRL-based C++ COM DLL implementing `IExplorerCommand` (two commands: "Compress with Morphix" and "Open in Morphix").
+- `msix/` — MSIX manifest, assets, built EXE, and DLL.
+- `scripts/build_msix.ps1` — full MSIX build+sign pipeline.
+- `scripts/download_ffmpeg.py` — downloads LGPL ffmpeg binaries from BtbN into `ffmpeg_binaries/bin/`.
 
 ## Coding Conventions
 
@@ -27,31 +44,44 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - Uses `ffmpeg-python` library for building ffmpeg command graphs (`ffmpeg.input()`, `ffmpeg.output()`, `ffmpeg.compile()`), but execution is via `subprocess.Popen` for real-time progress parsing and console window suppression.
 - All subprocess calls use `popen_no_window_kwargs()` — `CREATE_NO_WINDOW` on Windows, `start_new_session=True` elsewhere.
 - Bundled ffmpeg binaries searched in: `_MEIPASS` → Python exe directory → `../ffmpeg/` relative to `core.py` → system PATH via `shutil.which`.
+- Path manipulation uses `pathlib.Path` throughout core. UI uses `pathlib` where practical.
 - All computed video dimensions must be even integers (H.264 requirement) via `clamp_even()`.
 - Minimum auto-scaled height: 480px.
 - Target video bitrate formula: `max(int((size_mb * 1_000_000 * 8) / duration_s / 1000) - audio_kbps, 1)` with default `audio_kbps=128`.
 - BPP thresholds: low=0.05, medium=0.07, high=0.10.
 - Settings stored at `%APPDATA%\Morphix\settings.json`. Fallback to 20 MB if missing/unreadable.
 - Validation (`check_target_exceeds_file_size`, `check_low_compression_ratio`, `check_trim_values`) runs before any ffprobe/ffmpeg call.
-- Passlog files go in `.output/` subdirectory under the input file's directory; cleaned up via glob after Pass2.
-- GPU detection order: NVIDIA (`nvidia-smi -L`) → AMD (`rocm-smi`/WMI) → Intel (WMI/registry) → CPU fallback. Exceptions are swallowed per-vendor.
-- `get_available_devices()` always ends with `("cpu", "CPU")`.
+- Passlog files go in `.output/` subdirectory under the input file's directory; cleaned up via `Path.glob()` after Pass2.
+- GPU detection uses a `_VENDORS` registry (string-based function names for mock compatibility). Order: NVIDIA → AMD → Intel → CPU fallback. Exceptions swallowed per-vendor.
+- `get_available_devices()` always ends with `("cpu", "CPU", True)`.
 - Pass1 outputs to `NUL` (Windows null device), Pass2 outputs the final file.
 - Audio: AAC at 128 kbps (hardcoded). Pass1 uses `an=None` (no audio); Pass2 includes audio if the input has an audio stream.
+- Core uses `logging` module (`logger = logging.getLogger("morphix")`). CLI configures `logging.basicConfig`. No bare `print()` in core.
+
+## CompressConfig & RunContext
+
+- `CompressConfig` is a **frozen dataclass** — immutable snapshot of "what the user asked for". Created fresh for each compression run.
+- Fields: `input_path` (Path), `max_mb`, `output_path`, `quality` (Literal), `resolution`, `device_preference` (Literal), `overwrite`, `disable_logs`, `progress`, `progress_cb`, `start`, `end`, `warning_cb`, `encoder_override`.
+- Computed properties: `trimming` (bool), `trim_duration` (float).
+- `RunContext` accepts a single `CompressConfig` via `__init__(self, config)`. Holds only mutable runtime state (duration, video_kbps, probe, scale, passlog_path, etc.).
+- `RunContext.execute()` runs the full pipeline and returns the output path.
+- Encode strategies dispatched via dict: `{"two_pass": ..., "nvenc_multipass": ..., "single_pass_cbr": ...}`.
+- Scale stored as `tuple[int, int] | None` (not a filter string). Passed to `ffmpeg.filter_("scale", w, h)`.
 
 ## Testing
 
 - `pytest` + `hypothesis` for property-based tests (min 100 examples per property).
 - Property tests reference design properties: `# Feature: morphix-video-compressor, Property N: <text>`
 - Integration tests tagged `@pytest.mark.integration` (require ffmpeg on PATH).
-- Tests live in `tests/` directory with files: `test_core.py`, `test_properties.py`, `test_cli.py`, `test_ui.py`, `test_integration.py`, `test_validation.py`.
+- Tests live in `tests/` directory with files: `test_config.py`, `test_core.py`, `test_properties.py`, `test_cli.py`, `test_ui.py`, `test_integration.py`, `test_validation.py`.
 - `pytest.ini` exists at project root for test configuration.
+- Test helpers construct `CompressConfig` first, then pass to `RunContext`. No direct kwarg construction of `RunContext`.
 
 ## Build & Packaging
 
 - All builds run from the `morphix` conda environment (`conda run -n morphix ...`).
 - CLI EXE: `PyInstaller Morphix_CLI.spec` (onefile, bundles ffmpeg binaries).
-- UI EXE: `PyInstaller Morphix_UI.spec` (onefile, noconsole, bundles morphix_core and ffmpeg).
+- UI EXE: `PyInstaller Morphix_UI.spec` (onefile, noconsole, bundles `morphix_core`, `morphix_ui`, and ffmpeg).
 - COM DLL: built with `msbuild` (Release/x64) from `ContextMenuWrl/MorphixContextMenu.vcxproj`.
 - MSIX: packed with `makeappx.exe`, signed with `signtool.exe` using a self-signed cert (`CN=Morphix`).
 - `.spec` files at project root are the canonical PyInstaller build configs — use them instead of raw CLI flags.
@@ -61,7 +91,7 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - Users provide `start` and `end` (seconds) to extract and compress a specific segment.
 - CLI args: `--start` and `--end` (float seconds). UI: "Enable Trim" checkbox with HH:MM:SS entries.
 - Trim is applied directly via ffmpeg `-ss` and `-t` input options on the original file during encode — no temporary files.
-- When trimming, `trim_duration` (not full video duration) is used for bitrate calculation and progress tracking.
+- When trimming, `config.trim_duration` (not full video duration) is used for bitrate calculation and progress tracking.
 - If the estimated segment size (source bitrate × trim_duration) fits within `max_mb`, a single-pass CRF 18 encode is used (quality-preserving, no bitrate target).
 - If the segment exceeds `max_mb`, the normal two-pass encode runs with `-ss`/`-t` in `input_kwargs`.
 - Both passes receive identical `-ss`/`-t` values ensuring the two-pass log stays in sync.
@@ -73,15 +103,15 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - Never put logic in `core.py` beyond the thin `run()` wrapper — it is primarily a re-export facade.
 - No circular imports between submodules.
 - All public functions/classes remain importable from `morphix_core.core` for backward compatibility.
-- UI updates from background threads must go through `self.after(0, ...)` for Tkinter thread safety.
-- Compression runs in a daemon background thread in the UI.
+- UI updates from background threads must go through `self.after(0, ...)` or helpers in `widgets.py`.
+- Compression runs in a daemon background thread via `compression_worker.start_compression()`.
 - The ContextMenu DLL launches EXEs via `ShellExecuteExW` (non-blocking, no Explorer freeze).
 - GB-to-MB conversion in UI: `size_mb = size_value * 1000`.
 - Default output path: `{input_stem}_{size}mb.{ext}` (CLI/core) or `{input_stem}-morphix-compressed.{ext}` (UI/ContextMenu).
 - The UI auto-populates the output field when an input is selected (unless manually edited).
-- `RunContext` uses `device_preference` parameter (keys: `"auto"`, `"nvidia"`, `"amd"`, `"intel"`, `"cpu"`).
-- `RunContext` accepts `start` and `end` (float seconds, optional) for trim. `self.trimming` is set in `__init__` based on both being non-None.
-- `RunContext` accepts `warning_cb` (callable) and `encoder_override` (str|None).
+- `CompressConfig.device_preference` accepts: `"auto"`, `"nvidia"`, `"amd"`, `"intel"`, `"cpu"`.
+- `CompressConfig.trimming` and `CompressConfig.trim_duration` are computed properties (not stored fields).
+- `CompressConfig` is frozen — a new instance is created per compression run.
 
 ## Encoder Selection
 
@@ -89,7 +119,7 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - `select_encoder()` in `encoder_selection.py` picks the best available encoder based on GPU detection and ffmpeg capabilities.
 - NVENC multipass uses full bitrate (no safety margin — its internal two-pass is accurate).
 - Single-pass encoders (OpenH264) use `SAFETY_MARGIN = 0.85` + one retry if output exceeds target.
-- OpenH264 warning shown once per session via `warning_cb` (popup in UI, stderr in CLI).
+- OpenH264 warning shown once per session via `warning_cb` (popup in UI, logged in CLI).
 - UI "Advanced" section shows Device + Encoder dropdowns; unavailable encoders greyed out with inline reason.
 - `detect_available_encoders(ffmpeg_path)` in `ffmpeg_utils.py` probes which encoders the bundled ffmpeg supports.
 - `detect_build_type(ffmpeg_path)` returns "gpl" or "lgpl" based on ffmpeg's configuration line.

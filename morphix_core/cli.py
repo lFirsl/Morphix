@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from morphix_core.validation import (  # noqa: F401
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
 
     if args.no_console and os.name == "nt":

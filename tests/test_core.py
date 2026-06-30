@@ -1327,14 +1327,16 @@ def test_write_ffmpeg_error_fallback_when_stderr_is_empty_bytes(tmp_path):
 # --- Requirement 9.3: error log path printed to stdout ---
 
 
-def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, capsys):
-    """The path to the error log is printed to stdout."""
+def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, caplog):
+    """The path to the error log is logged at ERROR level."""
+    import logging
+
     ctx = make_ctx_for_error_log(tmp_path)
     exc = _make_ffmpeg_error(b"some error")
-    ctx._write_ffmpeg_error(exc)
-    captured = capsys.readouterr()
+    with caplog.at_level(logging.ERROR, logger="morphix"):
+        ctx._write_ffmpeg_error(exc)
     expected_path = os.path.join(ctx.log_dir, "ffmpeg-error.log")
-    assert expected_path in captured.out
+    assert expected_path in caplog.text
 
 
 # --- Requirement 9.4: exception is re-raised by _run_ffmpeg ---

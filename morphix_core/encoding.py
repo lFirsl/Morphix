@@ -1,9 +1,12 @@
+import logging
 import os
 import re
 import subprocess
 import sys
 
 import ffmpeg
+
+logger = logging.getLogger("morphix")
 
 from morphix_core.bitrate import (
     clamp_even,
@@ -83,10 +86,10 @@ class RunContext:
         self.encoder_warning = ""
 
     def execute(self):
-        print("Morphix Prototype")
+        logger.info("Morphix Prototype")
         self._ensure_ffmpeg_available()
         self._resolve_output_path()
-        print(f"Proceeding with a compression down to a size of {self.max_mb}mb")
+        logger.info("Proceeding with a compression down to a size of %smb", self.max_mb)
 
         self._probe_media()
         self._configure_hwaccel()
@@ -106,11 +109,11 @@ class RunContext:
             self.encoder_name, self.encoder_strategy = select_encoder(
                 available, self.device_preference, self.detected_device
             )
-        print(f"Encoder: {self.encoder_name} (strategy: {self.encoder_strategy})")
+        logger.info("Encoder: %s (strategy: %s)", self.encoder_name, self.encoder_strategy)
 
         if self.encoder_name == "libopenh264" and not self.encoder_override:
             self.encoder_warning = OPENH264_WARNING
-            print(self.encoder_warning, file=sys.stderr)
+            logger.warning(self.encoder_warning)
             if self.warning_cb:
                 self.warning_cb(self.encoder_warning)
 
@@ -129,9 +132,10 @@ class RunContext:
         if self.trimming and self._estimated_segment_mb() <= self.max_mb:
             if self.encoder_name in ("libx264", "h264_nvenc"):
                 est = self._estimated_segment_mb()
-                print(
-                    f"Trimmed segment (~{est:.1f}MB) fits within "
-                    f"{self.max_mb}MB — using CRF encode."
+                logger.info(
+                    "Trimmed segment (~%.1fMB) fits within %sMB — using CRF encode.",
+                    est,
+                    self.max_mb,
                 )
                 return self._run_crf_encode()
 
@@ -286,9 +290,11 @@ class RunContext:
         if output_mb > self.max_mb:
             reduction = self.max_mb / output_mb * 0.95
             retry_kbps = int(safe_kbps * reduction)
-            print(
-                f"Output {output_mb:.1f}MB exceeds "
-                f"{self.max_mb}MB — retrying at {retry_kbps}k"
+            logger.info(
+                "Output %.1fMB exceeds %sMB — retrying at %sk",
+                output_mb,
+                self.max_mb,
+                retry_kbps,
             )
             output = self._run_single_pass(retry_kbps)
 
@@ -366,8 +372,8 @@ class RunContext:
         if "NVIDIA" in self.device_label:
             self.detected_device = "nvidia"
         if self.device_preference == "nvidia" and not detect_cuda():
-            print("NVIDIA GPU requested but not available; falling back to CPU.")
-        print(f"Compression device: {self.device_label} (hwaccel={hwaccel or 'none'})")
+            logger.warning("NVIDIA GPU requested but not available; falling back to CPU.")
+        logger.info("Compression device: %s (hwaccel=%s)", self.device_label, hwaccel or "none")
         self.input_kwargs = {"hwaccel": hwaccel} if hwaccel else {}
 
     def _compute_scaling(self):
@@ -411,10 +417,7 @@ class RunContext:
             if scaled:
                 scale_filter = f"scale={scaled[0]}:{scaled[1]}"
                 w, h = scaled[0], scaled[1]
-                print(
-                    f"Auto-scaling to {w}x{h} for "
-                    f"quality '{self.quality}'."
-                )
+                logger.info("Auto-scaling to %sx%s for quality '%s'.", w, h, self.quality)
 
         self.scale_filter = scale_filter
 
@@ -573,7 +576,7 @@ class RunContext:
                 f.write(exc.stderr)
             else:
                 f.write(b"No stderr captured from ffmpeg.\n")
-        print(f"FFmpeg failed. See: {err_path}")
+        logger.error("FFmpeg failed. See: %s", err_path)
 
     def _cleanup_logs(self):
         # Remove two-pass log files and delete the log directory if empty.

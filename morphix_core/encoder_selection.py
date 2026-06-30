@@ -1,14 +1,25 @@
 """Encoder selection logic — picks the best available H.264 encoder."""
 
-# Encoder configs: (name, strategy, required_device)
-# required_device: None means CPU, "nvidia" means NVIDIA GPU, etc.
-# Strategy: "two_pass", "nvenc_multipass", "single_pass_cbr"
-ENCODER_PRIORITY = [
-    ("h264_nvenc", "nvenc_multipass", "nvidia"),
-    # Future: ("h264_amf", "single_pass_cbr", "amd"),
-    # Future: ("h264_qsv", "single_pass_cbr", "intel"),
-    ("libx264", "two_pass", None),
-    ("libopenh264", "single_pass_cbr", None),
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class EncoderConfig:
+    """Configuration for a single encoder option."""
+
+    name: str
+    strategy: str
+    required_device: str | None
+
+
+ENCODER_PRIORITY: list[EncoderConfig] = [
+    EncoderConfig("h264_nvenc", "nvenc_multipass", "nvidia"),
+    # Future: EncoderConfig("h264_amf", "single_pass_cbr", "amd"),
+    # Future: EncoderConfig("h264_qsv", "single_pass_cbr", "intel"),
+    EncoderConfig("libx264", "two_pass", None),
+    EncoderConfig("libopenh264", "single_pass_cbr", None),
 ]
 
 OPENH264_WARNING = (
@@ -21,7 +32,9 @@ SAFETY_MARGIN = 0.85  # For single-pass encoders, target 85% of calculated bitra
 
 
 def select_encoder(
-    available_encoders: set, device_preference: str, detected_device: str | None
+    available_encoders: set[str],
+    device_preference: str,
+    detected_device: str | None,
 ) -> tuple[str, str]:
     """Select the best encoder based on availability and device.
 
@@ -33,18 +46,20 @@ def select_encoder(
     Returns:
         (encoder_name, strategy) or raises RuntimeError if none available.
     """
-    for encoder_name, strategy, required_device in ENCODER_PRIORITY:
-        if encoder_name not in available_encoders:
+    for encoder in ENCODER_PRIORITY:
+        if encoder.name not in available_encoders:
             continue
-        if required_device is not None:
-            # GPU encoder — check device matches
+        if encoder.required_device is not None:
             if device_preference == "cpu":
                 continue
-            if device_preference != "auto" and device_preference != required_device:
+            if (
+                device_preference != "auto"
+                and device_preference != encoder.required_device
+            ):
                 continue
-            if detected_device != required_device:
+            if detected_device != encoder.required_device:
                 continue
-        return encoder_name, strategy
+        return encoder.name, encoder.strategy
 
     raise RuntimeError(
         "No compatible H.264 encoder found. Install ffmpeg with "

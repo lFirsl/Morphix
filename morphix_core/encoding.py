@@ -312,7 +312,7 @@ class RunContext:
         override = self.config.encoder_override
         if override and override != "Auto":
             strategy_map = {
-                name: strategy for name, strategy, _ in ENCODER_PRIORITY
+                enc.name: enc.strategy for enc in ENCODER_PRIORITY
             }
             self.encoder_name = override
             self.encoder_strategy = strategy_map.get(override, "single_pass_cbr")

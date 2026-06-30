@@ -739,7 +739,7 @@ def test_prop21_settings_round_trip(default_mb):
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             write_settings(default_mb)
             result = read_settings()
-    assert abs(result["default_mb"] - default_mb) < 1e-9 * max(abs(default_mb), 1)
+    assert abs(result.default_mb - default_mb) < 1e-9 * max(abs(default_mb), 1)
 
 
 # ---------------------------------------------------------------------------
@@ -749,13 +749,13 @@ def test_prop21_settings_round_trip(default_mb):
 
 
 def test_prop22_settings_fallback_missing_file():
-    """Property 22: read_settings() returns {"default_mb": 20} when file is missing.
+    """Property 22: read_settings() returns MorphixSettings(default_mb=20) when file is missing.
     **Validates: Requirements 20.2, 20.6**
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             result = read_settings()
-    assert result == {"default_mb": 20}
+    assert result.default_mb == 20
 
 
 def _is_invalid_json(s):
@@ -768,7 +768,7 @@ def _is_invalid_json(s):
 
 @given(invalid_json=st.text(min_size=1).filter(_is_invalid_json))
 def test_prop22_settings_fallback_invalid_json(invalid_json):
-    """Property 22: read_settings() returns {"default_mb": 20} when JSON is invalid.
+    """Property 22: read_settings() returns MorphixSettings(default_mb=20) when JSON is invalid.
     **Validates: Requirements 20.2, 20.6**
     """
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -780,7 +780,7 @@ def test_prop22_settings_fallback_invalid_json(invalid_json):
             f.write(invalid_json)
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             result = read_settings()
-    assert result == {"default_mb": 20}
+    assert result.default_mb == 20
 
 
 @given(
@@ -792,7 +792,7 @@ def test_prop22_settings_fallback_invalid_json(invalid_json):
     )
 )
 def test_prop22_settings_fallback_bad_default_mb(bad_value):
-    """Property 22: read_settings() returns {"default_mb": 20} when default_mb is missing/non-positive.
+    """Property 22: read_settings() returns MorphixSettings(default_mb=20) when default_mb is missing/non-positive.
     **Validates: Requirements 20.2, 20.6**
     """
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -805,11 +805,11 @@ def test_prop22_settings_fallback_bad_default_mb(bad_value):
             json.dump(data, f)
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             result = read_settings()
-    assert result == {"default_mb": 20}
+    assert result.default_mb == 20
 
 
 def test_prop22_settings_fallback_missing_key():
-    """Property 22: read_settings() returns {"default_mb": 20} when default_mb key is absent.
+    """Property 22: read_settings() returns MorphixSettings(default_mb=20) when default_mb key is absent.
     **Validates: Requirements 20.2, 20.6**
     """
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -821,7 +821,7 @@ def test_prop22_settings_fallback_missing_key():
             json.dump({}, f)
         with patch.dict(os.environ, {"APPDATA": tmpdir}):
             result = read_settings()
-    assert result == {"default_mb": 20}
+    assert result.default_mb == 20
 
 
 # ---------------------------------------------------------------------------

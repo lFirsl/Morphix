@@ -1,11 +1,14 @@
+"""Morphix CLI entry point."""
+
 import logging
 import os
 import subprocess
 import sys
 
 from morphix_core.cli_args import parse_args
+from morphix_core.config import CompressConfig
 from morphix_core.core import run
-from morphix_core.validation import (  # noqa: F401
+from morphix_core.validation import (
     check_low_compression_ratio,
     check_target_exceeds_file_size,
     check_trim_values,
@@ -41,15 +44,14 @@ def main():
             file=sys.stderr,
         )
 
-    # Validate trim values when both start and end are provided
-    # (we don't yet have video metadata in CLI).
+    # Validate trim values when both start and end are provided.
     if args.start is not None and args.end is not None:
         ok, msg = check_trim_values(args.start, args.end, float("inf"))
         if not ok:
             print(f"Error: {msg}", file=sys.stderr)
             sys.exit(1)
 
-    run(
+    config = CompressConfig(
         input_path=args.input,
         max_mb=args.max_mb,
         output_path=args.output,
@@ -59,10 +61,10 @@ def main():
         overwrite=args.overwrite,
         disable_logs=args.disable_logs,
         progress=args.progress,
-        progress_cb=None,
         start=args.start,
         end=args.end,
     )
+    run(config=config)
 
 
 if __name__ == "__main__":

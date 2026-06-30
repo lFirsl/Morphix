@@ -1,6 +1,7 @@
 import os
 import sys
 import tkinter as tk
+from dataclasses import dataclass, field
 from tkinter import filedialog, messagebox
 
 # Ensure repo root is on sys.path so morphix_core can be imported when run directly.
@@ -25,6 +26,19 @@ from morphix_core.validation import (  # noqa: E402
 from morphix_ui.widgets import set_widgets_state, show_error  # noqa: E402
 
 
+@dataclass
+class MorphixState:
+    """Mutable UI state separate from widget references."""
+
+    is_running: bool = False
+    auto_output: bool = True
+    suppress_output_trace: bool = False
+    trim_duration_seconds: float = 0.0
+    openh264_warned: bool = False
+    device_label_to_key: dict[str, str] = field(default_factory=dict)
+    unavailable_devices: set[str] = field(default_factory=set)
+
+
 class MorphixUI(tk.Tk):
     def __init__(self, input_file=None):
         super().__init__()
@@ -33,20 +47,19 @@ class MorphixUI(tk.Tk):
         self.minsize(520, 520)
         self.resizable(True, True)
 
-        # --- State variables ---
+        # --- State ---
+        self.state = MorphixState()
+
+        # --- Tkinter variables ---
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.size_var = tk.StringVar(value="20")
         self.unit_var = tk.StringVar(value="MB")
         self.device_options = get_available_devices()
-        self.device_label_to_key = {}
-        self._unavailable_devices = set()
         for key, label, available in self.device_options:
-            if available:
-                self.device_label_to_key[label] = key
-            else:
-                self.device_label_to_key[label] = key
-                self._unavailable_devices.add(label)
+            self.state.device_label_to_key[label] = key
+            if not available:
+                self.state.unavailable_devices.add(label)
         available_labels = [
             label for key, label, avail in self.device_options if avail
         ]
@@ -54,15 +67,11 @@ class MorphixUI(tk.Tk):
         self.device_var = tk.StringVar(value=default_device_label)
         self.encoder_var = tk.StringVar(value="Auto")
         self.advanced_var = tk.BooleanVar(value=False)
-        self._is_running = False
-        self._auto_output = True
-        self._suppress_output_trace = False
 
-        # --- Trim state ---
+        # --- Trim variables ---
         self.trim_enabled_var = tk.BooleanVar(value=False)
         self.trim_start_var = tk.StringVar(value="00:00:00")
         self.trim_end_var = tk.StringVar(value="00:00:00")
-        self.trim_duration_seconds = 0.0  # From video probe.
 
         self.output_var.trace_add("write", self._on_output_change)
 
@@ -182,8 +191,8 @@ class MorphixUI(tk.Tk):
         """Populate device dropdown, greying out unavailable options."""
         menu = self.device_menu["menu"]
         menu.delete(0, "end")
-        for label in self.device_label_to_key:
-            if label in self._unavailable_devices:
+        for label in self.state.device_label_to_key:
+            if label in self.state.unavailable_devices:
                 menu.add_command(
                     label=label, state="disabled"
                 )
@@ -203,7 +212,7 @@ class MorphixUI(tk.Tk):
         ffmpeg_path, _, _ = find_ffmpeg_binaries()
         available = detect_available_encoders(ffmpeg_path)
 
-        device_key = self.device_label_to_key.get(self.device_var.get(), "cpu")
+        device_key = self.state.device_label_to_key.get(self.device_var.get(), "cpu")
         has_nvidia = (
             device_key in ("nvidia", "auto") and "NVIDIA" in self.device_var.get()
         )
@@ -301,7 +310,7 @@ class MorphixUI(tk.Tk):
         duration_s = float(result.get("format", {}).get("duration", 0))
         if duration_s <= 0:
             return
-        self.trim_duration_seconds = duration_s
+        self.state.trim_duration_seconds = duration_s
         # Auto-set the end field to match video length.
         self.trim_end_var.set(self._format_time(duration_s))
 
@@ -381,7 +390,7 @@ class MorphixUI(tk.Tk):
         )
         if path:
             self.input_var.set(path)
-            if not self.output_var.get() or self._auto_output:
+            if not self.output_var.get() or self.state.auto_output:
                 self._set_output_auto(path)
             # Probe video duration for trim display (non-blocking via after).
             self.after(0, lambda p=path: self._probe_media_duration(p))
@@ -410,7 +419,7 @@ class MorphixUI(tk.Tk):
     # -------------------------------------------------------------------------
 
     def run_compress(self):
-        if self._is_running:
+        if self.state.is_running:
             return
         input_path = self.input_var.get().strip()
         output_path = self.output_var.get().strip()
@@ -445,7 +454,7 @@ class MorphixUI(tk.Tk):
                 show_error(self, err_msg)
                 return
             ok, msg = check_trim_values(
-                trim_start, trim_end, self.trim_duration_seconds
+                trim_start, trim_end, self.state.trim_duration_seconds
             )
             if not ok:
                 show_error(self, msg)
@@ -458,7 +467,7 @@ class MorphixUI(tk.Tk):
         trim_enabled = self.trim_enabled_var.get()
         if (
             not trim_enabled
-            or self.trim_duration_seconds <= 0
+            or self.state.trim_duration_seconds <= 0
             or trim_start is None
             or trim_end is None
         ):
@@ -476,7 +485,7 @@ class MorphixUI(tk.Tk):
         else:
             # Trimming is active and we have valid data — use estimated trimmed size.
             orig_file_mb = os.path.getsize(input_path) / 1_000_000
-            trim_ratio = (trim_end - trim_start) / self.trim_duration_seconds
+            trim_ratio = (trim_end - trim_start) / self.state.trim_duration_seconds
             est_trimmed_mb = orig_file_mb * trim_ratio
             if size_value < 0.05 * est_trimmed_mb:
                 min_mb = est_trimmed_mb * 0.05
@@ -495,7 +504,7 @@ class MorphixUI(tk.Tk):
                 if not proceed:
                     return
 
-        self._is_running = True
+        self.state.is_running = True
         self._set_controls_enabled(False)
         self._refresh_device_label()
         self._refresh_ffmpeg_label()
@@ -512,8 +521,8 @@ class MorphixUI(tk.Tk):
         )
 
         def _on_warning(msg):
-            if not getattr(self, "_openh264_warned", False):
-                self._openh264_warned = True
+            if not self.state.openh264_warned:
+                self.state.openh264_warned = True
                 self.after(
                     0,
                     lambda: messagebox.showwarning(
@@ -522,7 +531,7 @@ class MorphixUI(tk.Tk):
                 )
 
         def _on_finish():
-            self._is_running = False
+            self.state.is_running = False
             self._set_controls_enabled(True)
 
         def _on_error(msg):
@@ -612,12 +621,12 @@ class MorphixUI(tk.Tk):
                     " — See Help → About FFmpeg"
                 )
             )
-            if not self._is_running:
+            if not self.state.is_running:
                 self.compress_btn.config(state="normal")
 
     def _get_device_preference(self):
         # Map the selected label to a device key for the core logic.
-        return self.device_label_to_key.get(self.device_var.get(), "auto")
+        return self.state.device_label_to_key.get(self.device_var.get(), "auto")
 
     def _open_about_ffmpeg(self):
         """Open the About FFmpeg dialog."""
@@ -641,23 +650,23 @@ class MorphixUI(tk.Tk):
     def _set_output_auto(self, input_path):
         # Auto-generate output path based on the selected input.
         base, ext = os.path.splitext(input_path)
-        self._suppress_output_trace = True
+        self.state.suppress_output_trace = True
         self.output_var.set(base + "-morphix-compressed" + (ext or ".mp4"))
-        self._suppress_output_trace = False
-        self._auto_output = True
+        self.state.suppress_output_trace = False
+        self.state.auto_output = True
 
     def _set_output_manual(self, output_path):
         # Set output path explicitly and mark it as user-defined.
-        self._suppress_output_trace = True
+        self.state.suppress_output_trace = True
         self.output_var.set(output_path)
-        self._suppress_output_trace = False
-        self._auto_output = False
+        self.state.suppress_output_trace = False
+        self.state.auto_output = False
 
     def _on_output_change(self, *_args):
         # Treat direct user edits as manual output selection.
-        if self._suppress_output_trace:
+        if self.state.suppress_output_trace:
             return
-        self._auto_output = False
+        self.state.auto_output = False
 
 
 if __name__ == "__main__":

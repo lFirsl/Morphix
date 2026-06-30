@@ -21,7 +21,7 @@ def show_settings_dialog(parent: tk.Misc) -> None:
         row=0, column=0, sticky="w", **padding
     )
 
-    current_mb = read_settings().get("default_mb", 20)
+    current_mb = read_settings().default_mb
     mb_var = tk.StringVar(value=str(current_mb))
     mb_entry = tk.Entry(win, textvariable=mb_var, width=12)
     mb_entry.grid(row=0, column=1, sticky="w", **padding)

@@ -388,7 +388,7 @@ class TestMorphixUIControlState(unittest.TestCase):
             "normal",
             "device_menu should be re-enabled after error",
         )
-        self.assertFalse(app._is_running, "_is_running should be False after error")
+        self.assertFalse(app.state.is_running, "is_running should be False after error")
 
 
 # ===========================================================================

@@ -1,10 +1,12 @@
 """Unit tests for RunContext._resolve_output_path (Requirements 2.1–2.4)."""
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from morphix_core.config import CompressConfig
 from morphix_core.core import RunContext
 
 
@@ -14,9 +16,10 @@ def make_ctx(input_path, max_mb=15, output_path=None, start=None, end=None):
         "morphix_core.encoding.find_ffmpeg_binaries",
         return_value=(None, None, "missing"),
     ):
-        ctx = RunContext(
+        config = CompressConfig(
             input_path, max_mb, output_path=output_path, start=start, end=end
         )
+        ctx = RunContext(config)
     return ctx
 
 
@@ -350,7 +353,8 @@ def make_ctx_with_probe(resolution=None, probe_streams=None):
         "morphix_core.encoding.find_ffmpeg_binaries",
         return_value=(None, None, "missing"),
     ):
-        ctx = RunContext("/fake/video.mp4", max_mb=15, resolution=resolution)
+        config = CompressConfig("/fake/video.mp4", max_mb=15, resolution=resolution)
+        ctx = RunContext(config)
     ctx.probe = {"streams": probe_streams or []}
     ctx.video_bps = 1_000_000  # 1 Mbps default
     return ctx
@@ -360,34 +364,34 @@ def make_ctx_with_probe(resolution=None, probe_streams=None):
 
 
 def test_valid_resolution_sets_scale_filter():
-    """Valid '1280x720' sets scale_filter to 'scale=1280:720'."""
+    """Valid '1280x720' sets scale to (1280, 720)."""
     ctx = make_ctx_with_probe(resolution="1280x720")
     ctx._compute_scaling()
-    assert ctx.scale_filter == "scale=1280:720"
+    assert ctx.scale == (1280, 720)
 
 
 # --- Even-clamping applied to odd dimensions (Requirement 4.2) ---
 
 
 def test_odd_dimensions_are_clamped_to_even():
-    """'1281x721' is clamped to 'scale=1280:720'."""
+    """'1281x721' is clamped to (1280, 720)."""
     ctx = make_ctx_with_probe(resolution="1281x721")
     ctx._compute_scaling()
-    assert ctx.scale_filter == "scale=1280:720"
+    assert ctx.scale == (1280, 720)
 
 
 def test_odd_width_only_clamped():
     """Odd width is clamped; even height unchanged."""
     ctx = make_ctx_with_probe(resolution="1281x720")
     ctx._compute_scaling()
-    assert ctx.scale_filter == "scale=1280:720"
+    assert ctx.scale == (1280, 720)
 
 
 def test_odd_height_only_clamped():
     """Even width unchanged; odd height is clamped."""
     ctx = make_ctx_with_probe(resolution="1280x721")
     ctx._compute_scaling()
-    assert ctx.scale_filter == "scale=1280:720"
+    assert ctx.scale == (1280, 720)
 
 
 # --- Invalid resolution strings leave scale_filter as None (Requirements 4.3, 4.4) ---
@@ -397,49 +401,49 @@ def test_no_x_separator_leaves_scale_filter_none():
     """Resolution string without 'x' leaves scale_filter as None."""
     ctx = make_ctx_with_probe(resolution="1280720")
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 def test_non_numeric_width_leaves_scale_filter_none():
     """Non-numeric width leaves scale_filter as None."""
     ctx = make_ctx_with_probe(resolution="abcx720")
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 def test_non_numeric_height_leaves_scale_filter_none():
     """Non-numeric height leaves scale_filter as None."""
     ctx = make_ctx_with_probe(resolution="1280xabc")
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 def test_empty_resolution_leaves_scale_filter_none():
     """Empty resolution string leaves scale_filter as None."""
     ctx = make_ctx_with_probe(resolution="")
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 def test_dimension_below_2_leaves_scale_filter_none():
     """Dimensions < 2 after clamping leave scale_filter as None."""
     ctx = make_ctx_with_probe(resolution="1x1")
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 def test_zero_dimension_leaves_scale_filter_none():
     """Zero dimension leaves scale_filter as None."""
     ctx = make_ctx_with_probe(resolution="0x720")
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 def test_negative_dimension_leaves_scale_filter_none():
     """Negative dimension leaves scale_filter as None."""
     ctx = make_ctx_with_probe(resolution="-1280x720")
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 # --- Manual override bypasses auto-scaling (Requirement 4.1) ---
@@ -461,14 +465,14 @@ def test_manual_override_bypasses_auto_scaling():
     ctx.video_bps = 100_000
     ctx._compute_scaling()
     # Manual override wins — not the auto-scaled value
-    assert ctx.scale_filter == "scale=640:360"
+    assert ctx.scale == (640, 360)
 
 
 def test_manual_override_with_no_probe_data():
     """Manual override works even when probe has no video stream."""
     ctx = make_ctx_with_probe(resolution="1280x720", probe_streams=[])
     ctx._compute_scaling()
-    assert ctx.scale_filter == "scale=1280:720"
+    assert ctx.scale == (1280, 720)
 
 
 def test_no_resolution_uses_auto_scaling():
@@ -484,11 +488,10 @@ def test_no_resolution_uses_auto_scaling():
     ctx = make_ctx_with_probe(resolution=None, probe_streams=probe_streams)
     # Very low bitrate → auto-scaling should kick in
     ctx.video_bps = int(0.01 * 30 * 1920 * 1080)
-    ctx.quality = "medium"
     ctx._compute_scaling()
-    # Auto-scaling should produce some scale filter (not None)
-    assert ctx.scale_filter is not None
-    assert ctx.scale_filter.startswith("scale=")
+    # Auto-scaling should produce some scale tuple (not None)
+    assert ctx.scale is not None
+    assert isinstance(ctx.scale, tuple) and len(ctx.scale) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1011,11 +1014,12 @@ def make_ctx_for_progress(progress=True, progress_cb=None, duration=100.0):
         "morphix_core.encoding.find_ffmpeg_binaries",
         return_value=(None, None, "missing"),
     ):
-        ctx = RunContext(
+        config = CompressConfig(
             "/fake/video.mp4", max_mb=15, progress=progress, progress_cb=progress_cb
         )
+        ctx = RunContext(config)
     ctx.duration = duration
-    ctx.log_dir = "/tmp/fake_log"
+    ctx.log_dir = Path("/tmp/fake_log")
     return ctx
 
 
@@ -1184,7 +1188,8 @@ def make_ctx_for_logs(input_path):
         "morphix_core.encoding.find_ffmpeg_binaries",
         return_value=(None, None, "missing"),
     ):
-        ctx = RunContext(input_path, max_mb=15)
+        config = CompressConfig(input_path, max_mb=15)
+        ctx = RunContext(config)
     return ctx
 
 
@@ -1201,8 +1206,8 @@ def test_prepare_logs_passlog_path_under_output(tmp_path):
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
     ctx._prepare_logs()
-    expected_prefix = os.path.join(str(tmp_path), ".output") + os.sep
-    assert ctx.passlog_path.startswith(expected_prefix)
+    expected_prefix = str(tmp_path / ".output")
+    assert str(ctx.passlog_path).startswith(expected_prefix)
 
 
 def test_cleanup_logs_deletes_log_file(tmp_path):
@@ -1210,7 +1215,7 @@ def test_cleanup_logs_deletes_log_file(tmp_path):
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
     ctx._prepare_logs()
-    log_file = ctx.passlog_path + ".log"
+    log_file = str(ctx.passlog_path) + ".log"
     open(log_file, "w").close()  # create the file
     ctx._cleanup_logs()
     assert not os.path.exists(log_file)
@@ -1221,7 +1226,7 @@ def test_cleanup_logs_deletes_mbtree_file(tmp_path):
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
     ctx._prepare_logs()
-    mbtree_file = ctx.passlog_path + ".log.mbtree"
+    mbtree_file = str(ctx.passlog_path) + ".log.mbtree"
     open(mbtree_file, "w").close()  # create the file
     ctx._cleanup_logs()
     assert not os.path.exists(mbtree_file)
@@ -1234,9 +1239,9 @@ def test_cleanup_logs_removes_output_dir_when_empty(tmp_path):
     ctx._prepare_logs()
     # Create and then remove both passlog files so the dir is empty
     for suffix in (".log", ".log.mbtree"):
-        open(ctx.passlog_path + suffix, "w").close()
+        open(str(ctx.passlog_path) + suffix, "w").close()
     ctx._cleanup_logs()
-    assert not os.path.exists(os.path.join(str(tmp_path), ".output"))
+    assert not os.path.exists(str(tmp_path / ".output"))
 
 
 def test_cleanup_logs_silently_skips_missing_passlog_files(tmp_path):
@@ -1254,10 +1259,10 @@ def test_cleanup_logs_does_not_remove_output_dir_when_not_empty(tmp_path):
     ctx = make_ctx_for_logs(input_file)
     ctx._prepare_logs()
     # Place an unrelated file in .output/ so it is not empty after cleanup
-    other_file = os.path.join(ctx.log_dir, "ffmpeg-error.log")
+    other_file = ctx.log_dir / "ffmpeg-error.log"
     open(other_file, "w").close()
     ctx._cleanup_logs()
-    assert os.path.isdir(ctx.log_dir)
+    assert ctx.log_dir.is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -1275,9 +1280,10 @@ def make_ctx_for_error_log(tmp_path):
         "morphix_core.encoding.find_ffmpeg_binaries",
         return_value=(None, None, "missing"),
     ):
-        ctx = RunContext(input_file, max_mb=15)
-    ctx.log_dir = str(tmp_path / ".output")
-    os.makedirs(ctx.log_dir, exist_ok=True)
+        config = CompressConfig(input_file, max_mb=15)
+        ctx = RunContext(config)
+    ctx.log_dir = Path(tmp_path / ".output")
+    ctx.log_dir.mkdir(parents=True, exist_ok=True)
     return ctx
 
 
@@ -1295,7 +1301,7 @@ def test_write_ffmpeg_error_writes_stderr_bytes(tmp_path):
     err_bytes = b"ffmpeg: some error occurred\n"
     exc = _make_ffmpeg_error(err_bytes)
     ctx._write_ffmpeg_error(exc)
-    log_path = os.path.join(ctx.log_dir, "ffmpeg-error.log")
+    log_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
     assert os.path.isfile(log_path)
     assert open(log_path, "rb").read() == err_bytes
 
@@ -1308,7 +1314,7 @@ def test_write_ffmpeg_error_fallback_when_stderr_is_none(tmp_path):
     ctx = make_ctx_for_error_log(tmp_path)
     exc = _make_ffmpeg_error(None)
     ctx._write_ffmpeg_error(exc)
-    log_path = os.path.join(ctx.log_dir, "ffmpeg-error.log")
+    log_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
     assert open(log_path, "rb").read() == b"No stderr captured from ffmpeg.\n"
 
 
@@ -1320,7 +1326,7 @@ def test_write_ffmpeg_error_fallback_when_stderr_is_empty_bytes(tmp_path):
     ctx = make_ctx_for_error_log(tmp_path)
     exc = _make_ffmpeg_error(b"")
     ctx._write_ffmpeg_error(exc)
-    log_path = os.path.join(ctx.log_dir, "ffmpeg-error.log")
+    log_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
     assert open(log_path, "rb").read() == b"No stderr captured from ffmpeg.\n"
 
 
@@ -1335,7 +1341,7 @@ def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, caplog):
     exc = _make_ffmpeg_error(b"some error")
     with caplog.at_level(logging.ERROR, logger="morphix"):
         ctx._write_ffmpeg_error(exc)
-    expected_path = os.path.join(ctx.log_dir, "ffmpeg-error.log")
+    expected_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
     assert expected_path in caplog.text
 
 
@@ -1344,8 +1350,15 @@ def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, caplog):
 
 def test_run_ffmpeg_reraises_after_writing_error_log(tmp_path):
     """_run_ffmpeg re-raises as RuntimeError after calling _write_ffmpeg_error."""
-    ctx = make_ctx_for_error_log(tmp_path)
-    ctx.progress = False
+    input_file = str(tmp_path / "video.mp4")
+    with patch(
+        "morphix_core.encoding.find_ffmpeg_binaries",
+        return_value=(None, None, "missing"),
+    ):
+        config = CompressConfig(input_file, max_mb=15, progress=False)
+        ctx = RunContext(config)
+    ctx.log_dir = Path(tmp_path / ".output")
+    ctx.log_dir.mkdir(parents=True, exist_ok=True)
 
     fake_exc = ffmpeg_lib.Error("ffmpeg", None, b"fatal error")
 
@@ -1400,34 +1413,34 @@ def test_popen_no_window_kwargs_create_no_window_value_is_correct():
 def test_trim_disabled_when_no_start():
     """Trimming is not active when start is None."""
     ctx = make_ctx("/fake/video.mp4", start=None, end=50.0)
-    assert ctx.trimming is False
-    assert ctx.trim_duration == 0.0
+    assert ctx.config.trimming is False
+    assert ctx.config.trim_duration == 0.0
 
 
 def test_trim_disabled_when_no_end():
     """Trimming is not active when end is None."""
     ctx = make_ctx("/fake/video.mp4", start=10.0, end=None)
-    assert ctx.trimming is False
-    assert ctx.trim_duration == 0.0
+    assert ctx.config.trimming is False
+    assert ctx.config.trim_duration == 0.0
 
 
 def test_trim_enabled_with_both_values():
     """Trimming is active when both start and end are provided."""
     ctx = make_ctx("/fake/video.mp4", start=10.0, end=60.0)
-    assert ctx.trimming is True
-    assert ctx.trim_duration == 50.0
+    assert ctx.config.trimming is True
+    assert ctx.config.trim_duration == 50.0
 
 
 def test_trimming_disabled_when_no_start():
     """Trimming is inactive when start is not set."""
     ctx = make_ctx("/fake/video.mp4", max_mb=15, start=None, end=50.0)
-    assert ctx.trimming is False
+    assert ctx.config.trimming is False
 
 
 def test_trimming_disabled_when_no_end():
     """Trimming is inactive when end is not set."""
     ctx = make_ctx("/fake/video.mp4", max_mb=15, start=10.0, end=None)
-    assert ctx.trimming is False
+    assert ctx.config.trimming is False
 
 
 def test_estimated_segment_mb():
@@ -1447,7 +1460,8 @@ def test_probe_media_uses_trim_duration_for_bitrate():
         "morphix_core.encoding.find_ffmpeg_binaries",
         return_value=(None, None, "missing"),
     ):
-        ctx = RunContext("/fake/video.mp4", max_mb=15, start=10.0, end=60.0)
+        config = CompressConfig("/fake/video.mp4", max_mb=15, start=10.0, end=60.0)
+        ctx = RunContext(config)
 
     ctx.probe = {
         "format": {"duration": "300.0"},
@@ -1455,5 +1469,5 @@ def test_probe_media_uses_trim_duration_for_bitrate():
     }
 
     # trimming is True, trim_duration is 50.0
-    assert ctx.trimming is True
-    assert ctx.trim_duration == 50.0
+    assert ctx.config.trimming is True
+    assert ctx.config.trim_duration == 50.0

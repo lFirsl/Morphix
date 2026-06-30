@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -44,19 +45,21 @@ _FS_SETTINGS = settings(
 def make_ctx(
     input_path, max_mb=15, output_path=None, resolution=None, quality="medium"
 ):
+    from morphix_core.config import CompressConfig
     from morphix_core.encoding import RunContext
 
     with patch(
         "morphix_core.encoding.find_ffmpeg_binaries",
         return_value=(None, None, "missing"),
     ):
-        ctx = RunContext(
+        config = CompressConfig(
             input_path,
             max_mb,
             output_path=output_path,
             resolution=resolution,
             quality=quality,
         )
+        ctx = RunContext(config)
     return ctx
 
 
@@ -332,9 +335,9 @@ def test_prop8_manual_resolution_override_applied(tmp_path, w, h):
     expected_w = clamp_even(w)
     expected_h = clamp_even(h)
     if expected_w >= 2 and expected_h >= 2:
-        assert ctx.scale_filter == f"scale={expected_w}:{expected_h}"
+        assert ctx.scale == (expected_w, expected_h)
     else:
-        assert ctx.scale_filter is None
+        assert ctx.scale is None
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +369,7 @@ def test_prop9_invalid_resolution_no_scale_filter(tmp_path, resolution):
     ctx.probe = {"streams": []}
     ctx.video_bps = 1_000_000
     ctx._compute_scaling()
-    assert ctx.scale_filter is None
+    assert ctx.scale is None
 
 
 # ---------------------------------------------------------------------------
@@ -541,8 +544,8 @@ def test_prop13_passlog_path_under_output_subdir(filename):
         ctx._prepare_logs()
 
         expected_log_dir = os.path.join(tmpdir, ".output")
-        assert ctx.log_dir == expected_log_dir
-        assert ctx.passlog_path.startswith(expected_log_dir)
+        assert str(ctx.log_dir) == expected_log_dir
+        assert str(ctx.passlog_path).startswith(expected_log_dir)
 
         if os.path.isdir(expected_log_dir):
             shutil.rmtree(expected_log_dir)
@@ -565,8 +568,8 @@ def test_prop14_empty_output_dir_removed_after_cleanup(n_passlog_files):
 
         input_path = os.path.join(tmpdir, "video.mp4")
         ctx = make_ctx(input_path)
-        ctx.log_dir = log_dir
-        ctx.passlog_path = os.path.join(log_dir, "ffmpeg2pass")
+        ctx.log_dir = Path(log_dir)
+        ctx.passlog_path = Path(log_dir) / "ffmpeg2pass"
 
         for i in range(n_passlog_files):
             open(os.path.join(log_dir, f"ffmpeg2pass-{i}.log"), "w").close()
@@ -594,7 +597,7 @@ def test_prop15_ffmpeg_error_log_with_stderr(stderr_bytes):
         os.makedirs(log_dir)
         input_path = os.path.join(tmpdir, "video.mp4")
         ctx = make_ctx(input_path)
-        ctx.log_dir = log_dir
+        ctx.log_dir = Path(log_dir)
 
         # ffmpeg.Error(cmd, stdout, stderr) — stderr is the third argument
         exc = ffmpeg_lib.Error("ffmpeg", None, stderr_bytes)
@@ -616,7 +619,7 @@ def test_prop15_ffmpeg_error_log_no_stderr(stderr_bytes):
         os.makedirs(log_dir)
         input_path = os.path.join(tmpdir, "video.mp4")
         ctx = make_ctx(input_path)
-        ctx.log_dir = log_dir
+        ctx.log_dir = Path(log_dir)
 
         # ffmpeg.Error(cmd, stdout, stderr) — stderr is the third argument
         exc = ffmpeg_lib.Error("ffmpeg", None, stderr_bytes)
@@ -643,12 +646,17 @@ def test_prop16_ffmpeg_exception_reraised_after_logging(stderr_bytes):
         log_dir = os.path.join(tmpdir, ".output")
         os.makedirs(log_dir)
         input_path = os.path.join(tmpdir, "video.mp4")
-        ctx = make_ctx(input_path)
-        ctx.log_dir = log_dir
-        ctx.progress = False
-        ctx.disable_logs = True
-        ctx.ffmpeg_path = "ffmpeg"
-        ctx.overwrite = True
+
+        from morphix_core.config import CompressConfig
+        from morphix_core.encoding import RunContext
+
+        with patch(
+            "morphix_core.encoding.find_ffmpeg_binaries",
+            return_value=("ffmpeg", "ffprobe", "path"),
+        ):
+            config = CompressConfig(input_path, max_mb=15, progress=False)
+            ctx = RunContext(config)
+        ctx.log_dir = Path(log_dir)
 
         # ffmpeg.Error(cmd, stdout, stderr) — stderr is the third argument
         exc = ffmpeg_lib.Error("ffmpeg", None, stderr_bytes)

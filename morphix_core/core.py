@@ -2,16 +2,19 @@
 # No logic lives here; all symbols are re-exported from submodules so that
 # existing import paths (cli.py, ui_app.py, tests) continue to work unchanged.
 
+# Re-export internal utilities that tests currently import from here.
+# These will be removed in Task 4 once test imports are updated.
 from morphix_core.bitrate import (  # noqa: F401
     clamp_even,
     compute_scaled_resolution,
     parse_fps,
     target_kbps_for_size_mb,
 )
+from morphix_core.config import CompressConfig, parse_resolution  # noqa: F401
 from morphix_core.encoder_selection import (  # noqa: F401
     ENCODER_PRIORITY,
     OPENH264_WARNING,
-    SAFETY_MARGIN,
+    SAFETY_MARGIN,  # noqa: F401
     select_encoder,
 )
 from morphix_core.encoding import RunContext  # noqa: F401
@@ -40,8 +43,8 @@ from morphix_core.validation import (  # noqa: F401
 
 
 def run(
-    input_path,
-    max_mb,
+    input_path=None,
+    max_mb=None,
     output_path=None,
     quality="medium",
     resolution=None,
@@ -54,22 +57,30 @@ def run(
     end: float | None = None,
     warning_cb=None,
     encoder_override: str | None = None,
+    *,
+    config: CompressConfig | None = None,
 ):
-    # Backwards-compatible entry point used by CLI and UI.
-    ctx = RunContext(
-        input_path,
-        max_mb,
-        output_path=output_path,
-        quality=quality,
-        resolution=resolution,
-        device_preference=device_preference,
-        overwrite=overwrite,
-        disable_logs=disable_logs,
-        progress=progress,
-        progress_cb=progress_cb,
-        start=start,
-        end=end,
-        warning_cb=warning_cb,
-        encoder_override=encoder_override,
-    )
+    """Backwards-compatible entry point used by CLI and UI.
+
+    Accepts either individual kwargs or a pre-built CompressConfig via the
+    config keyword argument. If config is provided, all other kwargs are ignored.
+    """
+    if config is None:
+        config = CompressConfig(
+            input_path=input_path,
+            max_mb=max_mb,
+            output_path=output_path,
+            quality=quality,
+            resolution=resolution,
+            device_preference=device_preference,
+            overwrite=overwrite,
+            disable_logs=disable_logs,
+            progress=progress,
+            progress_cb=progress_cb,
+            start=start,
+            end=end,
+            warning_cb=warning_cb,
+            encoder_override=encoder_override,
+        )
+    ctx = RunContext(config)
     return ctx.execute()

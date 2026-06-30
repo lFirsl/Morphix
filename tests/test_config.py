@@ -92,12 +92,16 @@ class TestCompressConfigCallbacks:
     """Verify callback fields accept callables."""
 
     def test_progress_cb_stored(self):
-        cb = lambda pct, phase: None
+        def cb(pct, phase):
+            pass
+
         cfg = CompressConfig("video.mp4", 15, progress_cb=cb)
         assert cfg.progress_cb is cb
 
     def test_warning_cb_stored(self):
-        cb = lambda msg: None
+        def cb(msg):
+            pass
+
         cfg = CompressConfig("video.mp4", 15, warning_cb=cb)
         assert cfg.warning_cb is cb
 

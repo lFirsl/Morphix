@@ -37,7 +37,7 @@ python Morphix.py input.mp4 --max-mb 8 --start 10 --end 30 --output trimmed.mp4
 ### UI
 
 ```bash
-python morphix_ui/ui_app.py
+python morphix_ui/main_window.py
 ```
 
 ## Building

@@ -10,7 +10,7 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - Submodules: `ffmpeg_utils.py`, `gpu_detection.py`, `encoding.py`, `encoder_selection.py`, `bitrate.py`, `settings.py`, `validation.py`
 - `morphix_core/encoding.py` contains the `RunContext` class (all per-run state and execution).
 - `morphix_core/encoder_selection.py` contains encoder priority list, `select_encoder()`, and `OPENH264_WARNING`.
-- `morphix_ui/ui_app.py` is the Tkinter GUI (`MorphixUI(tk.Tk)`). Layout in `_build_ui()` and helper methods; event logic in separate methods.
+- `morphix_ui/main_window.py` is the Tkinter GUI (`MorphixUI(tk.Tk)`). Layout in `_build_ui()` and helper methods; event logic in separate methods.
 - `morphix_core/cli.py` + `morphix_core/cli_args.py` is the CLI entry point. Entry: `python -m morphix_core.cli` or `Morphix.py` (which imports cli.main).
 - `ContextMenuWrl/` is a 64-bit WRL-based C++ COM DLL implementing `IExplorerCommand` (two commands: "Compress with Morphix" and "Open in Morphix").
 - `msix/` contains the MSIX manifest, assets, built EXE, and DLL.

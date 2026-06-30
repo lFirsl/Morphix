@@ -1,6 +1,6 @@
 # morphix_core/core.py — public API facade
 # No logic lives here; all symbols are re-exported from submodules so that
-# existing import paths (cli.py, ui_app.py, tests) continue to work unchanged.
+# existing import paths (cli.py, main_window.py, tests) continue to work unchanged.
 
 # Re-export internal utilities that tests currently import from here.
 # These will be removed in Task 4 once test imports are updated.

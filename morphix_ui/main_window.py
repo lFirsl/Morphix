@@ -25,17 +25,6 @@ from morphix_core.validation import (  # noqa: E402
 from morphix_ui.widgets import set_widgets_state, show_error  # noqa: E402
 
 
-def find_morphix_exe():
-    candidates = [
-        os.path.join(os.getcwd(), "dist", "Morphix.exe"),
-        os.path.join(os.getcwd(), "Morphix.exe"),
-    ]
-    for path in candidates:
-        if os.path.isfile(path):
-            return path
-    return None
-
-
 class MorphixUI(tk.Tk):
     def __init__(self, input_file=None):
         super().__init__()
@@ -212,8 +201,6 @@ class MorphixUI(tk.Tk):
     def _refresh_encoder_menu(self):
         """Refresh encoder dropdown: grey out unavailable encoders."""
         ffmpeg_path, _, _ = find_ffmpeg_binaries()
-
-        ffmpeg_path, _, _ = find_ffmpeg_binaries()
         available = detect_available_encoders(ffmpeg_path)
 
         device_key = self.device_label_to_key.get(self.device_var.get(), "cpu")
@@ -256,16 +243,6 @@ class MorphixUI(tk.Tk):
             )
             if not valid:
                 self.encoder_var.set("Auto")
-
-    def _get_encoder_choices(self):
-        """Return available encoder options for the dropdown."""
-        ffmpeg_path, _, _ = find_ffmpeg_binaries()
-        available = detect_available_encoders(ffmpeg_path)
-        choices = ["Auto"]
-        for name in ["h264_nvenc", "libx264", "libopenh264"]:
-            if name in available:
-                choices.append(name)
-        return choices
 
     def _on_advanced_toggle(self):
         """Show/hide the advanced options frame."""

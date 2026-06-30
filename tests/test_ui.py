@@ -176,7 +176,7 @@ def _make_app(input_file=None):
     """Instantiate MorphixUI with all core functions mocked."""
     import importlib
 
-    import morphix_ui.ui_app as ui_mod
+    import morphix_ui.main_window as ui_mod
 
     with _core_patches():
         importlib.reload(ui_mod)

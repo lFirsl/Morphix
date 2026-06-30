@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['morphix_ui\\ui_app.py'],
+    ['morphix_ui\\main_window.py'],
     pathex=[],
     binaries=[('ffmpeg_binaries\\bin\\ffmpeg.exe', 'ffmpeg'), ('ffmpeg_binaries\\bin\\ffprobe.exe', 'ffmpeg')],
     datas=[('morphix_core', 'morphix_core')],

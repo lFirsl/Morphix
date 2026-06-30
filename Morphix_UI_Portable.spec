@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['morphix_ui\\ui_app.py'],
+    ['morphix_ui\\main_window.py'],
     pathex=[],
     binaries=[],
     datas=[('morphix_core', 'morphix_core')],

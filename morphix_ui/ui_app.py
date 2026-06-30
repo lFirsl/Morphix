@@ -1,6 +1,5 @@
 import os
 import sys
-import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -16,16 +15,14 @@ from morphix_core.core import (  # noqa: E402
     get_available_devices,
     get_ffmpeg_version,
     resolve_device_info,
-    run,
-    select_encoder,
 )
 from morphix_core.ffmpeg_utils import ffprobe_media  # noqa: E402
-from morphix_core.settings import read_settings, write_settings  # noqa: E402
 from morphix_core.validation import (  # noqa: E402
     check_low_compression_ratio,
     check_target_exceeds_file_size,
     check_trim_values,
 )
+from morphix_ui.widgets import set_widgets_state, show_error  # noqa: E402
 
 
 def find_morphix_exe():
@@ -427,54 +424,9 @@ class MorphixUI(tk.Tk):
 
     def open_settings(self):
         """Open settings dialog for default context menu MB."""
-        win = tk.Toplevel(self)
-        win.title("Morphix Settings")
-        win.resizable(False, False)
-        win.grab_set()  # modal
+        from morphix_ui.dialogs import show_settings_dialog
 
-        padding = {"padx": 12, "pady": 8}
-
-        tk.Label(win, text="Default compression size (MB):").grid(
-            row=0, column=0, sticky="w", **padding
-        )
-
-        current_mb = read_settings().get("default_mb", 20)
-        mb_var = tk.StringVar(value=str(current_mb))
-        mb_entry = tk.Entry(win, textvariable=mb_var, width=12)
-        mb_entry.grid(row=0, column=1, sticky="w", **padding)
-
-        tk.Label(
-            win,
-            text=(
-                "This value is used by the "
-                "'Compress with Morphix' context menu entry."
-            ),
-            fg="#666666",
-            wraplength=320,
-        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12, pady=(0, 8))
-
-        def save():
-            raw = mb_var.get().strip()
-            try:
-                value = float(raw)
-                if value <= 0:
-                    raise ValueError("must be positive")
-            except ValueError:
-                messagebox.showerror(
-                    "Invalid value",
-                    "Please enter a positive number for the default compression size.",
-                    parent=win,
-                )
-                return
-            write_settings(value)
-            win.destroy()
-
-        btn_frame = tk.Frame(win)
-        btn_frame.grid(row=2, column=0, columnspan=2, pady=(4, 12))
-        tk.Button(btn_frame, text="Save", command=save).pack(side="left", padx=6)
-        tk.Button(btn_frame, text="Cancel", command=win.destroy).pack(
-            side="left", padx=6
-        )
+        show_settings_dialog(self)
 
     # -------------------------------------------------------------------------
     # Event handlers — compression
@@ -513,13 +465,13 @@ class MorphixUI(tk.Tk):
                 trim_end = self._parse_time(self.trim_end_var.get())
             except ValueError as exc:
                 err_msg = str(exc)
-                self.after(0, lambda: messagebox.showerror("Morphix", err_msg))
+                show_error(self, err_msg)
                 return
             ok, msg = check_trim_values(
                 trim_start, trim_end, self.trim_duration_seconds
             )
             if not ok:
-                self.after(0, lambda: messagebox.showerror("Morphix", msg))
+                show_error(self, msg)
                 return
 
         # --- Low compression ratio warning ---
@@ -573,79 +525,59 @@ class MorphixUI(tk.Tk):
         self._set_status("Running compression...")
         device_preference = self._get_device_preference()
 
-        def progress_cb(pct, phase):
-            # Update status with pass labels and brief descriptions.
-            if phase == "PASS1":
-                self._set_status(f"Pass 1/2: Analyzing video... {pct:.1f}%")
-            elif phase == "PASS2":
-                self._set_status(f"Pass 2/2: Encoding final output... {pct:.1f}%")
-            elif phase == "CRF":
-                self._set_status(f"Encoding (quality-preserving)... {pct:.1f}%")
-            else:
-                self._set_status(f"Encoding... {pct:.1f}%")
+        enc_override = self.encoder_var.get()
+        if enc_override == "Auto":
+            enc_override = None
 
-        def worker():
-            try:
+        from morphix_ui.compression_worker import (
+            CompressionCallbacks,
+            start_compression,
+        )
 
-                def on_warning(msg):
-                    if not getattr(self, "_openh264_warned", False):
-                        self._openh264_warned = True
-                        self.after(
-                            0,
-                            lambda: messagebox.showwarning(
-                                "Morphix — Encoder Warning", msg
-                            ),
-                        )
-
-                device_label, _ = resolve_device_info(device_preference)
-                detected = "nvidia" if "NVIDIA" in device_label else None
-                ffmpeg_path, _, _ = find_ffmpeg_binaries()
-                available = detect_available_encoders(ffmpeg_path)
-                enc_override = self.encoder_var.get()
-                if enc_override and enc_override != "Auto":
-                    enc_name = enc_override
-                else:
-                    enc_override = None
-                    try:
-                        enc_name, _ = select_encoder(
-                            available, device_preference, detected
-                        )
-                    except RuntimeError:
-                        enc_name = "none"
+        def _on_warning(msg):
+            if not getattr(self, "_openh264_warned", False):
+                self._openh264_warned = True
                 self.after(
                     0,
-                    lambda: self.device_status.config(
-                        text=f"Device: {device_label} | Encoder: {enc_name}"
+                    lambda: messagebox.showwarning(
+                        "Morphix — Encoder Warning", msg
                     ),
                 )
 
-                run(
-                    input_path=input_path,
-                    max_mb=size_value,
-                    output_path=output_path or None,
-                    quality="medium",
-                    resolution=None,
-                    device_preference=device_preference,
-                    overwrite=True,
-                    disable_logs=True,
-                    progress=True,
-                    progress_cb=progress_cb,
-                    start=trim_start,
-                    end=trim_end,
-                    warning_cb=on_warning,
-                    encoder_override=enc_override,
-                )
-                self._set_status("Done.")
-            except Exception as exc:
-                self._set_status(f"Failed: {exc}")
-                err_msg = str(exc)
-                self.after(0, lambda: messagebox.showerror("Morphix", err_msg))
-            finally:
-                self._is_running = False
-                self._set_controls_enabled(True)
+        def _on_finish():
+            self._is_running = False
+            self._set_controls_enabled(True)
 
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
+        def _on_error(msg):
+            show_error(self, msg)
+            _on_finish()
+
+        def _on_done():
+            _on_finish()
+
+        callbacks = CompressionCallbacks(
+            on_status=self._set_status,
+            on_done=_on_done,
+            on_error=_on_error,
+            on_warning=_on_warning,
+            on_encoder_info=lambda dev, enc: self.after(
+                0,
+                lambda: self.device_status.config(
+                    text=f"Device: {dev} | Encoder: {enc}"
+                ),
+            ),
+        )
+
+        start_compression(
+            input_path=input_path,
+            output_path=output_path or None,
+            size_value=size_value,
+            device_preference=device_preference,
+            encoder_override=enc_override,
+            trim_start=trim_start,
+            trim_end=trim_end,
+            callbacks=callbacks,
+        )
 
     # -------------------------------------------------------------------------
     # UI state helpers
@@ -658,17 +590,19 @@ class MorphixUI(tk.Tk):
     def _set_controls_enabled(self, enabled):
         # Enable/disable all input controls safely from any thread.
         state = "normal" if enabled else "disabled"
-        self.after(0, lambda: self.compress_btn.config(state=state))
-        self.after(0, lambda: self.settings_btn.config(state=state))
-        self.after(0, lambda: self.input_entry.config(state=state))
-        self.after(0, lambda: self.output_entry.config(state=state))
-        self.after(0, lambda: self.size_entry.config(state=state))
-        self.after(0, lambda: self.unit_menu.config(state=state))
-        self.after(0, lambda: self.browse_input_btn.config(state=state))
-        self.after(0, lambda: self.browse_output_btn.config(state=state))
-        self.after(0, lambda: self.device_menu.config(state=state))
-        self.after(0, lambda: self.trim_start_entry.config(state=state))
-        self.after(0, lambda: self.trim_end_entry.config(state=state))
+        set_widgets_state(self, [
+            self.compress_btn,
+            self.settings_btn,
+            self.input_entry,
+            self.output_entry,
+            self.size_entry,
+            self.unit_menu,
+            self.browse_input_btn,
+            self.browse_output_btn,
+            self.device_menu,
+            self.trim_start_entry,
+            self.trim_end_entry,
+        ], state)
 
     def _refresh_device_label(self):
         # Resolve the selected device and update the UI label.
@@ -719,14 +653,9 @@ class MorphixUI(tk.Tk):
 
     def _open_about_morphix(self):
         """Show About Morphix dialog with version info."""
-        from morphix_core import __version__
+        from morphix_ui.dialogs import show_about_morphix
 
-        messagebox.showinfo(
-            "About Morphix",
-            f"Morphix v{__version__}\n\n"
-            "Compress any video to a target file size.\n\n"
-            "https://github.com/lFirsl/Morphix",
-        )
+        show_about_morphix(self)
 
     # -------------------------------------------------------------------------
     # Output path helpers

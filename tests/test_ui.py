@@ -302,7 +302,7 @@ class TestMorphixUIControlState(unittest.TestCase):
             worker_may_finish.wait(timeout=3)
 
         with (
-            patch.object(self.ui_mod, "run", side_effect=fake_run),
+            patch("morphix_ui.compression_worker.run", side_effect=fake_run),
             patch.object(self.ui_mod, "check_target_exceeds_file_size"),
             patch.object(
                 self.ui_mod, "check_low_compression_ratio", return_value=False
@@ -361,7 +361,7 @@ class TestMorphixUIControlState(unittest.TestCase):
             raise RuntimeError("ffmpeg failed")
 
         with (
-            patch.object(self.ui_mod, "run", side_effect=fake_run_raises),
+            patch("morphix_ui.compression_worker.run", side_effect=fake_run_raises),
             patch.object(self.ui_mod, "messagebox"),
             patch.object(self.ui_mod, "check_target_exceeds_file_size"),
             patch.object(

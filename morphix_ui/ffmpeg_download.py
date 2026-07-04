@@ -50,6 +50,24 @@ def show_about_ffmpeg(parent, ffmpeg_path, version, build_type, source):
 
     pad = {"padx": 12, "pady": 4}
 
+    # --- What is FFmpeg? ---
+    tk.Label(win, text="What is FFmpeg?", font=("", 10, "bold")).pack(
+        anchor="w", **pad
+    )
+    what_is = (
+        "FFmpeg is the engine that does the actual video work.\n"
+        "Morphix handles the settings and the interface — FFmpeg\n"
+        "is what reads your video, compresses it, and saves the\n"
+        "result. Without it, Morphix cannot process any files."
+    )
+    tk.Label(win, text=what_is, justify="left").pack(
+        anchor="w", padx=12, pady=(0, 8)
+    )
+
+    tk.Frame(win, height=1, bd=0, bg="#cccccc").pack(
+        fill="x", padx=12, pady=(0, 6)
+    )
+
     # --- Current info ---
     source_labels = {
         "user": "user-provided",

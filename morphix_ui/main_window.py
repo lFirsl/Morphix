@@ -1,8 +1,12 @@
+"""MorphixUI — main application window."""
+
+from __future__ import annotations
+
 import os
 import sys
 import tkinter as tk
 from dataclasses import dataclass, field
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
 
 # Ensure repo root is on sys.path so morphix_core can be imported when run directly.
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -10,19 +14,13 @@ if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
 from morphix_core.core import (  # noqa: E402
-    detect_available_encoders,
     detect_build_type,
     find_ffmpeg_binaries,
     get_available_devices,
     get_ffmpeg_version,
     resolve_device_info,
 )
-from morphix_core.ffmpeg_utils import ffprobe_media  # noqa: E402
-from morphix_core.validation import (  # noqa: E402
-    check_low_compression_ratio,
-    check_target_exceeds_file_size,
-    check_trim_values,
-)
+from morphix_core.validation import check_low_compression_ratio  # noqa: E402
 from morphix_ui.widgets import set_widgets_state, show_error  # noqa: E402
 
 
@@ -40,304 +38,122 @@ class MorphixState:
 
 
 class MorphixUI(tk.Tk):
-    def __init__(self, input_file=None):
+    def __init__(self, input_file: str | None = None) -> None:
         super().__init__()
         self.title("Morphix")
-        self.geometry("560x520")
-        self.minsize(520, 520)
+        self.geometry("560x420")
+        self.minsize(520, 420)
         self.resizable(True, True)
 
-        # --- State ---
+        # --- Shared state ---
         self.state = MorphixState()
-
-        # --- Tkinter variables ---
-        self.input_var = tk.StringVar()
-        self.output_var = tk.StringVar()
-        self.size_var = tk.StringVar(value="20")
-        self.unit_var = tk.StringVar(value="MB")
-        self.device_options = get_available_devices()
-        for key, label, available in self.device_options:
+        device_options = get_available_devices()
+        for key, label, available in device_options:
             self.state.device_label_to_key[label] = key
             if not available:
                 self.state.unavailable_devices.add(label)
-        available_labels = [
-            label for key, label, avail in self.device_options if avail
-        ]
-        default_device_label = available_labels[0] if available_labels else "CPU"
-        self.device_var = tk.StringVar(value=default_device_label)
-        self.encoder_var = tk.StringVar(value="Auto")
-        self.advanced_var = tk.BooleanVar(value=False)
 
-        # --- Trim variables ---
-        self.trim_enabled_var = tk.BooleanVar(value=False)
-        self.trim_start_var = tk.StringVar(value="00:00:00")
-        self.trim_end_var = tk.StringVar(value="00:00:00")
-
-        self.output_var.trace_add("write", self._on_output_change)
-
-        # --- Build UI layout ---
+        # --- Build shell UI (tab bar placeholder + static rows) ---
         self._build_ui()
 
-        # --- Post-build initialization ---
+        # --- Instantiate tabs ---
+        from morphix_ui.tabs.advanced_tab import AdvancedTab
+        from morphix_ui.tabs.target_tab import TargetTab
+        from morphix_ui.tabs.trim_tab import TrimTab
+
+        self.tabs = [
+            TargetTab(
+                self.tab_content,
+                self.state,
+                self,
+                on_file_selected=self._on_file_selected,
+            ),
+            TrimTab(self.tab_content, self.state, self),
+            AdvancedTab(self.tab_content, self.state, self),
+        ]
+
+        # --- Build tab bar now that tabs exist ---
+        self._build_tab_bar()
+
+        # --- Show first tab by default ---
+        self._switch_tab(self.tabs[0])
+
+        # --- Validation chain ---
+        from morphix_ui.validation_chain import (
+            FileSizeHandler,
+            TrimValuesHandler,
+            build_chain,
+        )
+
+        self.validation_chain = build_chain(FileSizeHandler(), TrimValuesHandler())
+
+        # --- Post-build initialisation ---
         if input_file:
-            self.input_var.set(input_file)
-            self._set_output_auto(input_file)
-        # Populate the device label on startup so it doesn't stay at CPU until run.
+            target = self._target_tab()
+            target.input_var.set(input_file)
+            target._set_output_auto(input_file)
+
         self._refresh_device_label()
-        # Show whether bundled or PATH ffmpeg is being used.
         self._refresh_ffmpeg_label()
 
     # -------------------------------------------------------------------------
-    # Layout / widget construction
+    # Layout — shell only (tab bar + content area + buttons + status)
     # -------------------------------------------------------------------------
 
-    def _build_ui(self):
-        """Construct and grid all widgets. No event logic here."""
-        padding = {"padx": 10, "pady": 6}
-        self.grid_columnconfigure(1, weight=1)
+    def _build_ui(self) -> None:
+        """Build the static shell: tab bar, content area, buttons, status."""
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # Row 0: tab bar placeholder (filled in _build_tab_bar after tabs exist)
+        self.tab_bar = tk.Frame(self)
+        self.tab_bar.grid(row=0, column=0, sticky="ew", padx=4, pady=(8, 0))
+
+        # Row 1: content area — tabs are gridded inside here
+        self.tab_content = tk.Frame(self)
+        self.tab_content.grid(row=1, column=0, sticky="nsew", padx=4, pady=4)
+        self.tab_content.grid_columnconfigure(0, weight=1)
 
         # Menu bar
         menubar = tk.Menu(self)
         help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(
-            label="About FFmpeg", command=self._open_about_ffmpeg
-        )
-        help_menu.add_command(
-            label="About Morphix", command=self._open_about_morphix
-        )
+        help_menu.add_command(label="About FFmpeg", command=self._open_about_ffmpeg)
+        help_menu.add_command(label="About Morphix", command=self._open_about_morphix)
         menubar.add_cascade(label="Help", menu=help_menu)
         self.config(menu=menubar)
 
-        self._build_input_row(padding)
-        self._build_output_row(padding)
-        self._build_target_size_row(padding)
+        self._build_action_row()
+        self._build_tip_row()
+        self._build_status_labels()
 
-        # Visual separator before interactive controls.
-        tk.Frame(self, height=2, bd=1, relief="groove").grid(
-            row=3, column=0, columnspan=3, sticky="ew", pady=(6, 6)
-        )
-
-        self._build_trim_section(padding)
-
-        # Separator between trim and advanced.
-        tk.Frame(self, height=2, bd=1, relief="groove").grid(
-            row=6, column=0, columnspan=3, sticky="ew", pady=(6, 6)
-        )
-
-        self._build_advanced_section(padding)
-        self._build_compress_button(padding)
-        self._build_tip_row(padding)
-        self._build_status_labels(padding)
-
-    def _build_input_row(self, padding):
-        """Row 0: input file selector."""
-        tk.Label(self, text="Input file").grid(row=0, column=0, sticky="w", **padding)
-        self.input_entry = tk.Entry(self, textvariable=self.input_var, width=50)
-        self.input_entry.grid(row=0, column=1, sticky="ew", **padding)
-        self.browse_input_btn = tk.Button(
-            self, text="Browse", command=self.browse_input
-        )
-        self.browse_input_btn.grid(row=0, column=2, **padding)
-
-    def _build_output_row(self, padding):
-        """Row 1: output file selector."""
-        tk.Label(self, text="Output file").grid(row=1, column=0, sticky="w", **padding)
-        self.output_entry = tk.Entry(self, textvariable=self.output_var, width=50)
-        self.output_entry.grid(row=1, column=1, sticky="ew", **padding)
-        self.browse_output_btn = tk.Button(
-            self, text="Browse", command=self.browse_output
-        )
-        self.browse_output_btn.grid(row=1, column=2, **padding)
-
-    def _build_target_size_row(self, padding):
-        """Row 2: target size entry and unit selector."""
-        tk.Label(self, text="Target size").grid(row=2, column=0, sticky="w", **padding)
-        self.size_entry = tk.Entry(self, textvariable=self.size_var, width=10)
-        self.size_entry.grid(row=2, column=1, sticky="w", **padding)
-        self.unit_menu = tk.OptionMenu(self, self.unit_var, "MB", "GB")
-        self.unit_menu.grid(row=2, column=2, sticky="w", **padding)
-
-    def _build_advanced_section(self, padding):
-        """Row 7: Advanced collapsible section with Device and Encoder."""
-        tk.Checkbutton(
-            self,
-            text="Advanced",
-            variable=self.advanced_var,
-            command=self._on_advanced_toggle,
-        ).grid(row=7, column=0, columnspan=3, sticky="w", **padding)
-
-        self.advanced_frame = tk.Frame(self)
-
-        tk.Label(self.advanced_frame, text="Device").grid(
-            row=0, column=0, sticky="w", padx=(15, 4), pady=2
-        )
-        self.device_menu = tk.OptionMenu(
-            self.advanced_frame, self.device_var, ""
-        )
-        self._refresh_device_menu()
-        self.device_menu.grid(row=0, column=1, sticky="w", pady=2)
-
-        tk.Label(self.advanced_frame, text="Encoder").grid(
-            row=1, column=0, sticky="w", padx=(15, 4), pady=2
-        )
-
-        self._build_encoder_menu()
-        self.encoder_menu.grid(row=1, column=1, sticky="w", pady=2)
-
-        # Update encoder availability when device changes.
-        self.device_var.trace_add("write", lambda *_: self._refresh_encoder_menu())
-
-    def _refresh_device_menu(self):
-        """Populate device dropdown, greying out unavailable options."""
-        menu = self.device_menu["menu"]
-        menu.delete(0, "end")
-        for label in self.state.device_label_to_key:
-            if label in self.state.unavailable_devices:
-                menu.add_command(
-                    label=label, state="disabled"
-                )
-            else:
-                menu.add_command(
-                    label=label,
-                    command=lambda v=label: self.device_var.set(v),
-                )
-
-    def _build_encoder_menu(self):
-        """Build the encoder OptionMenu with greyed-out unavailable items."""
-        self.encoder_menu = tk.OptionMenu(self.advanced_frame, self.encoder_var, "Auto")
-        self._refresh_encoder_menu()
-
-    def _refresh_encoder_menu(self):
-        """Refresh encoder dropdown: grey out unavailable encoders."""
-        ffmpeg_path, _, _ = find_ffmpeg_binaries()
-        available = detect_available_encoders(ffmpeg_path)
-
-        device_key = self.state.device_label_to_key.get(self.device_var.get(), "cpu")
-        has_nvidia = (
-            device_key in ("nvidia", "auto") and "NVIDIA" in self.device_var.get()
-        )
-
-        # All possible encoders with their requirements.
-        all_encoders = [
-            (
-                "h264_nvenc",
-                "no NVIDIA GPU",
-                lambda: "h264_nvenc" in available and has_nvidia,
-            ),
-            ("libx264", "needs GPL ffmpeg", lambda: "libx264" in available),
-            (
-                "libopenh264",
-                "not in this ffmpeg build",
-                lambda: "libopenh264" in available,
-            ),
-        ]
-
-        menu = self.encoder_menu["menu"]
-        menu.delete(0, "end")
-        menu.add_command(label="Auto", command=lambda: self.encoder_var.set("Auto"))
-
-        for name, reason, check_fn in all_encoders:
-            if check_fn():
-                menu.add_command(
-                    label=name, command=lambda n=name: self.encoder_var.set(n)
-                )
-            else:
-                menu.add_command(label=f"{name}  ({reason})", state="disabled")
-
-        # If current selection is no longer valid, reset to Auto.
-        current = self.encoder_var.get()
-        if current != "Auto":
-            valid = any(
-                name == current and check_fn() for name, _, check_fn in all_encoders
+    def _build_tab_bar(self) -> None:
+        """Populate the tab bar with one button per tab."""
+        self._tab_buttons: dict[str, tk.Button] = {}
+        for tab in self.tabs:
+            btn = tk.Button(
+                self.tab_bar,
+                text=tab.label,
+                relief="flat",
+                command=lambda t=tab: self._switch_tab(t),
             )
-            if not valid:
-                self.encoder_var.set("Auto")
+            btn.pack(side="left", padx=(0, 2))
+            self._tab_buttons[tab.label] = btn
 
-    def _on_advanced_toggle(self):
-        """Show/hide the advanced options frame."""
-        if self.advanced_var.get():
-            self.advanced_frame.grid(row=8, column=0, columnspan=4, sticky="w")
-        else:
-            self.advanced_frame.grid_forget()
+    def _switch_tab(self, active_tab) -> None:
+        """Show *active_tab* and hide all others. Highlight the active button."""
+        for tab in self.tabs:
+            if tab is active_tab:
+                tab.grid(row=0, column=0, sticky="nsew")
+            else:
+                tab.grid_forget()
+        for label, btn in self._tab_buttons.items():
+            btn.config(relief="sunken" if label == active_tab.label else "flat")
+        self._active_tab = active_tab
 
-    def _build_trim_section(self, padding):
-        """Row 4: trim checkbox and conditional time entries."""
-        tk.Checkbutton(
-            self,
-            text="Enable Trim",
-            variable=self.trim_enabled_var,
-            command=self._on_trim_toggle,
-        ).grid(row=4, column=0, columnspan=3, sticky="w", **padding)
-
-        # Frame for time entries (hidden until checkbox checked).
-        self.trim_frame = tk.Frame(self)
-        self.trim_frame.grid_forget()
-
-        tk.Label(self.trim_frame, text="Start").grid(
-            row=0, column=0, sticky="w", padx=(15, 4), pady=2
-        )
-        self.trim_start_entry = tk.Entry(
-            self.trim_frame, textvariable=self.trim_start_var, width=12
-        )
-        self.trim_start_entry.grid(row=0, column=1, sticky="w", pady=2)
-
-        tk.Label(self.trim_frame, text="End").grid(
-            row=0, column=2, padx=(15, 4), pady=2
-        )
-        self.trim_end_entry = tk.Entry(
-            self.trim_frame, textvariable=self.trim_end_var, width=12
-        )
-        self.trim_end_entry.grid(row=0, column=3, sticky="w", pady=2)
-
-    def _on_trim_toggle(self):
-        """Show/hide the time entry frame when the trim checkbox changes."""
-        if self.trim_enabled_var.get():
-            self.trim_frame.grid(row=5, column=0, columnspan=4, sticky="w")
-        else:
-            self.trim_frame.grid_forget()
-
-    def _probe_media_duration(self, input_path: str):
-        """Probe the video and set trim duration bounds."""
-        try:
-            _, ffprobe_path, _ = find_ffmpeg_binaries()
-            if not ffprobe_path:
-                return
-        except ImportError:
-            return
-        result = ffprobe_media(input_path, ffprobe_path)
-        if result is None:
-            return
-        duration_s = float(result.get("format", {}).get("duration", 0))
-        if duration_s <= 0:
-            return
-        self.state.trim_duration_seconds = duration_s
-        # Auto-set the end field to match video length.
-        self.trim_end_var.set(self._format_time(duration_s))
-
-    @staticmethod
-    def _parse_time(time_str: str) -> float:
-        """Parse MM:SS or HH:MM:SS to seconds."""
-        parts = time_str.strip().split(":")
-        if len(parts) == 2:
-            m, s = map(int, parts)
-            return m * 60 + s
-        elif len(parts) == 3:
-            h, m, s = map(int, parts)
-            return h * 3600 + m * 60 + s
-        raise ValueError(f"Invalid time format: {time_str}")
-
-    @staticmethod
-    def _format_time(seconds: float) -> str:
-        """Format seconds as HH:MM:SS with zero-padded hours."""
-        h = int(seconds) // 3600
-        m = (int(seconds) % 3600) // 60
-        s = int(seconds) % 60
-        return f"{h:02d}:{m:02d}:{s:02d}"
-
-    def _build_compress_button(self, padding):
-        """Row 9: compress action button and settings button."""
+    def _build_action_row(self) -> None:
+        """Row 2: Compress and Settings buttons."""
         btn_frame = tk.Frame(self)
-        btn_frame.grid(row=9, column=0, columnspan=3, pady=12)
+        btn_frame.grid(row=2, column=0, pady=10)
         self.compress_btn = tk.Button(
             btn_frame, text="Compress", command=self.run_compress
         )
@@ -347,132 +163,94 @@ class MorphixUI(tk.Tk):
         )
         self.settings_btn.pack(side="left", padx=6)
 
-    def _build_tip_row(self, padding):
-        """Row 10: quality tip message."""
-        tk.Label(self, text="Tip:", font=("Segoe UI", 10, "bold")).grid(
-            row=10, column=0, sticky="w", **padding
+    def _build_tip_row(self) -> None:
+        """Row 3: quality tip."""
+        tip_frame = tk.Frame(self)
+        tip_frame.grid(row=3, column=0, sticky="ew", padx=10)
+        tk.Label(tip_frame, text="Tip:", font=("Segoe UI", 10, "bold")).pack(
+            side="left"
         )
         tk.Message(
-            self,
+            tip_frame,
             text=(
                 "Lower target sizes can look blurry. Ideally set"
                 " the Target Size to the maximum you're able to."
             ),
             width=420,
-        ).grid(row=10, column=1, columnspan=2, sticky="w", **padding)
+        ).pack(side="left")
 
-    def _build_status_labels(self, padding):
-        """Rows 11-13: device status, ffmpeg status, and general status labels."""
+    def _build_status_labels(self) -> None:
+        """Rows 4-6: device, ffmpeg, and general status labels."""
         self.device_status = tk.Label(self, text="Device: CPU", fg="#444444")
-        self.device_status.grid(
-            row=11, column=0, columnspan=3, sticky="w", padx=10, pady=2
-        )
+        self.device_status.grid(row=4, column=0, sticky="w", padx=10, pady=2)
 
         self.ffmpeg_status = tk.Label(self, text="FFmpeg: path", fg="#444444")
-        self.ffmpeg_status.grid(
-            row=12, column=0, columnspan=3, sticky="w", padx=10, pady=2
-        )
+        self.ffmpeg_status.grid(row=5, column=0, sticky="w", padx=10, pady=2)
 
         self.status = tk.Label(self, text="", fg="#444444")
-        self.status.grid(row=13, column=0, columnspan=3, sticky="w", padx=10, pady=6)
+        self.status.grid(row=6, column=0, sticky="w", padx=10, pady=6)
 
     # -------------------------------------------------------------------------
-    # Event handlers — file browsing
+    # Tab accessors
     # -------------------------------------------------------------------------
 
-    def browse_input(self):
-        path = filedialog.askopenfilename(
-            title="Select video",
-            filetypes=[
-                ("Video files", "*.mp4;*.mov;*.mkv;*.avi;*.webm"),
-                ("All files", "*.*"),
-            ],
-        )
-        if path:
-            self.input_var.set(path)
-            if not self.output_var.get() or self.state.auto_output:
-                self._set_output_auto(path)
-            # Probe video duration for trim display (non-blocking via after).
-            self.after(0, lambda p=path: self._probe_media_duration(p))
+    def _target_tab(self):
+        from morphix_ui.tabs.target_tab import TargetTab
 
-    def browse_output(self):
-        path = filedialog.asksaveasfilename(
-            title="Select output file",
-            defaultextension=".mp4",
-            filetypes=[("MP4", "*.mp4"), ("All files", "*.*")],
-        )
-        if path:
-            self._set_output_manual(path)
+        return next(t for t in self.tabs if isinstance(t, TargetTab))
+
+    def _trim_tab(self):
+        from morphix_ui.tabs.trim_tab import TrimTab
+
+        return next(t for t in self.tabs if isinstance(t, TrimTab))
 
     # -------------------------------------------------------------------------
-    # Event handlers — settings
+    # File probe callback
     # -------------------------------------------------------------------------
 
-    def open_settings(self):
-        """Open settings dialog for default context menu MB."""
-        from morphix_ui.dialogs import show_settings_dialog
-
-        show_settings_dialog(self)
+    def _on_file_selected(self, duration_s: float) -> None:
+        """Called by TargetTab after a successful media probe."""
+        self._trim_tab().set_end_time(duration_s)
 
     # -------------------------------------------------------------------------
-    # Event handlers — compression
+    # Compression
     # -------------------------------------------------------------------------
 
-    def run_compress(self):
+    def run_compress(self) -> None:
         if self.state.is_running:
             return
-        input_path = self.input_var.get().strip()
-        output_path = self.output_var.get().strip()
-        size_mb = self.size_var.get().strip()
 
-        if not input_path:
-            messagebox.showerror("Morphix", "Please select an input file.")
-            return
-        if not size_mb:
-            messagebox.showerror("Morphix", "Please enter a target size in MB.")
-            return
+        # Collect from all tabs.
+        params = {tab.label: tab.collect() for tab in self.tabs}
+        target = params["Target"]
+        trim = params["Trim"]
+        advanced = params["Advanced"]
 
-        size_value = float(size_mb)
-        if self.unit_var.get() == "GB":
-            size_value = size_value * 1000
-
-        try:
-            check_target_exceeds_file_size(size_value, input_path)
-        except ValueError as exc:
-            messagebox.showerror("Morphix", str(exc))
-            return
-
-        # --- Trim validation ---
-        trim_start = None
-        trim_end = None
-        if self.trim_enabled_var.get():
-            try:
-                trim_start = self._parse_time(self.trim_start_var.get())
-                trim_end = self._parse_time(self.trim_end_var.get())
-            except ValueError as exc:
-                err_msg = str(exc)
-                show_error(self, err_msg)
-                return
-            ok, msg = check_trim_values(
-                trim_start, trim_end, self.state.trim_duration_seconds
-            )
-            if not ok:
+        # Per-tab validation (each tab's own validate()).
+        for tab in self.tabs:
+            msg = tab.validate()
+            if msg:
                 show_error(self, msg)
                 return
 
-        # --- Low compression ratio warning ---
-        # When trimming is active AND we have video duration from probe, check against
-        # the estimated trimmed segment size instead of the full file. Otherwise use
-        # original behavior (full-file comparison).
-        trim_enabled = self.trim_enabled_var.get()
+        # CoR hard validation chain.
+        params["_trim_duration"] = self.state.trim_duration_seconds
+        error = self.validation_chain.handle(params)
+        if error:
+            show_error(self, error)
+            return
+
+        # Soft low-compression-ratio warning (needs askokcancel — stays here).
+        trim_start = trim.start if trim.enabled else None
+        trim_end = trim.end if trim.enabled else None
+
         if (
-            not trim_enabled
+            not trim.enabled
             or self.state.trim_duration_seconds <= 0
             or trim_start is None
             or trim_end is None
         ):
-            # No trim, or no probe data — compare target against original file.
-            if check_low_compression_ratio(size_value, input_path):
+            if check_low_compression_ratio(target.size_mb, target.input_path):
                 proceed = messagebox.askokcancel(
                     "Morphix — High Compression Warning",
                     "The target size is less than 5% of the original file size. "
@@ -483,22 +261,19 @@ class MorphixUI(tk.Tk):
                 if not proceed:
                     return
         else:
-            # Trimming is active and we have valid data — use estimated trimmed size.
-            orig_file_mb = os.path.getsize(input_path) / 1_000_000
+            orig_file_mb = os.path.getsize(target.input_path) / 1_000_000
             trim_ratio = (trim_end - trim_start) / self.state.trim_duration_seconds
             est_trimmed_mb = orig_file_mb * trim_ratio
-            if size_value < 0.05 * est_trimmed_mb:
+            if target.size_mb < 0.05 * est_trimmed_mb:
                 min_mb = est_trimmed_mb * 0.05
                 proceed = messagebox.askokcancel(
                     "Morphix — High Compression Warning",
-                    f"Your trimmed clip is estimated to be "
-                    f"about {est_trimmed_mb:.1f} MB.\n\n"
-                    f"The target size ({size_value:.1f} MB) is "
-                    f"less than 5% of the "
-                    f"estimated trimmed clip size. The output "
-                    f"will very likely look poor.\n\n"
-                    f"Consider using a target of at least "
-                    f"{min_mb:.1f} MB.\n\n"
+                    f"Your trimmed clip is estimated to be about"
+                    f" {est_trimmed_mb:.1f} MB.\n\n"
+                    f"The target size ({target.size_mb:.1f} MB) is less than"
+                    f" 5% of the estimated trimmed clip size. The output will"
+                    f" very likely look poor.\n\n"
+                    f"Consider using a target of at least {min_mb:.1f} MB.\n\n"
                     "Do you want to continue anyway?",
                 )
                 if not proceed:
@@ -509,42 +284,28 @@ class MorphixUI(tk.Tk):
         self._refresh_device_label()
         self._refresh_ffmpeg_label()
         self._set_status("Running compression...")
-        device_preference = self._get_device_preference()
-
-        enc_override = self.encoder_var.get()
-        if enc_override == "Auto":
-            enc_override = None
 
         from morphix_ui.compression_worker import (
             CompressionCallbacks,
             start_compression,
         )
 
-        def _on_warning(msg):
+        def _on_warning(msg: str) -> None:
             if not self.state.openh264_warned:
                 self.state.openh264_warned = True
                 self.after(
                     0,
-                    lambda: messagebox.showwarning(
-                        "Morphix — Encoder Warning", msg
-                    ),
+                    lambda: messagebox.showwarning("Morphix — Encoder Warning", msg),
                 )
 
-        def _on_finish():
+        def _on_finish() -> None:
             self.state.is_running = False
             self._set_controls_enabled(True)
 
-        def _on_error(msg):
-            show_error(self, msg)
-            _on_finish()
-
-        def _on_done():
-            _on_finish()
-
         callbacks = CompressionCallbacks(
             on_status=self._set_status,
-            on_done=_on_done,
-            on_error=_on_error,
+            on_done=_on_finish,
+            on_error=lambda msg: (show_error(self, msg), _on_finish()),
             on_warning=_on_warning,
             on_encoder_info=lambda dev, enc: self.after(
                 0,
@@ -555,59 +316,55 @@ class MorphixUI(tk.Tk):
         )
 
         start_compression(
-            input_path=input_path,
-            output_path=output_path or None,
-            size_value=size_value,
-            device_preference=device_preference,
-            encoder_override=enc_override,
+            input_path=target.input_path,
+            output_path=target.output_path or None,
+            size_value=target.size_mb,
+            device_preference=advanced.device_preference,
+            encoder_override=advanced.encoder_override,
             trim_start=trim_start,
             trim_end=trim_end,
             callbacks=callbacks,
         )
 
     # -------------------------------------------------------------------------
+    # Settings dialog
+    # -------------------------------------------------------------------------
+
+    def open_settings(self) -> None:
+        from morphix_ui.dialogs import show_settings_dialog
+
+        show_settings_dialog(self)
+
+    # -------------------------------------------------------------------------
     # UI state helpers
     # -------------------------------------------------------------------------
 
-    def _set_status(self, text):
-        # Ensure UI updates happen on the main thread.
+    def _set_status(self, text: str) -> None:
         self.after(0, lambda: self.status.config(text=text))
 
-    def _set_controls_enabled(self, enabled):
-        # Enable/disable all input controls safely from any thread.
+    def _set_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
-        set_widgets_state(self, [
-            self.compress_btn,
-            self.settings_btn,
-            self.input_entry,
-            self.output_entry,
-            self.size_entry,
-            self.unit_menu,
-            self.browse_input_btn,
-            self.browse_output_btn,
-            self.device_menu,
-            self.trim_start_entry,
-            self.trim_end_entry,
-        ], state)
+        set_widgets_state(self, [self.compress_btn, self.settings_btn], state)
+        for tab in self.tabs:
+            tab.set_enabled(enabled)
 
-    def _refresh_device_label(self):
-        # Resolve the selected device and update the UI label.
-        device_label, _ = resolve_device_info(self._get_device_preference())
+    def _refresh_device_label(self) -> None:
+        from morphix_ui.tabs.advanced_tab import AdvancedTab
+
+        adv_tab = next((t for t in self.tabs if isinstance(t, AdvancedTab)), None)
+        pref = adv_tab._get_device_preference() if adv_tab else "auto"
+        device_label, _ = resolve_device_info(pref)
         self.device_status.config(text=f"Device: {device_label}")
 
-    def _refresh_ffmpeg_label(self):
-        # Detect which ffmpeg is being used and display info.
+    def _refresh_ffmpeg_label(self) -> None:
         ffmpeg_path, _, source = find_ffmpeg_binaries()
         version = get_ffmpeg_version(ffmpeg_path)
         build = detect_build_type(ffmpeg_path)
-        if source == "user":
-            label = "user-provided"
-        elif source == "path":
-            label = "system PATH"
-        elif source == "bundled":
-            label = "bundled"
-        else:
-            label = "missing"
+        source_label = {
+            "user": "user-provided",
+            "path": "system PATH",
+            "bundled": "bundled",
+        }.get(source, "missing")
 
         if source == "missing":
             self.ffmpeg_status.config(
@@ -617,19 +374,14 @@ class MorphixUI(tk.Tk):
         else:
             self.ffmpeg_status.config(
                 text=(
-                    f"FFmpeg: {label} ({version}, {build})"
+                    f"FFmpeg: {source_label} ({version}, {build})"
                     " — See Help → About FFmpeg"
                 )
             )
             if not self.state.is_running:
                 self.compress_btn.config(state="normal")
 
-    def _get_device_preference(self):
-        # Map the selected label to a device key for the core logic.
-        return self.state.device_label_to_key.get(self.device_var.get(), "auto")
-
-    def _open_about_ffmpeg(self):
-        """Open the About FFmpeg dialog."""
+    def _open_about_ffmpeg(self) -> None:
         from morphix_ui.ffmpeg_download import show_about_ffmpeg
 
         ffmpeg_path, _, source = find_ffmpeg_binaries()
@@ -637,36 +389,10 @@ class MorphixUI(tk.Tk):
         build = detect_build_type(ffmpeg_path)
         show_about_ffmpeg(self, ffmpeg_path, version, build, source)
 
-    def _open_about_morphix(self):
-        """Show About Morphix dialog with version info."""
+    def _open_about_morphix(self) -> None:
         from morphix_ui.dialogs import show_about_morphix
 
         show_about_morphix(self)
-
-    # -------------------------------------------------------------------------
-    # Output path helpers
-    # -------------------------------------------------------------------------
-
-    def _set_output_auto(self, input_path):
-        # Auto-generate output path based on the selected input.
-        base, ext = os.path.splitext(input_path)
-        self.state.suppress_output_trace = True
-        self.output_var.set(base + "-morphix-compressed" + (ext or ".mp4"))
-        self.state.suppress_output_trace = False
-        self.state.auto_output = True
-
-    def _set_output_manual(self, output_path):
-        # Set output path explicitly and mark it as user-defined.
-        self.state.suppress_output_trace = True
-        self.output_var.set(output_path)
-        self.state.suppress_output_trace = False
-        self.state.auto_output = False
-
-    def _on_output_change(self, *_args):
-        # Treat direct user edits as manual output selection.
-        if self.state.suppress_output_trace:
-            return
-        self.state.auto_output = False
 
 
 if __name__ == "__main__":

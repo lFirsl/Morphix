@@ -6,6 +6,7 @@ import os
 import tkinter as tk
 from collections.abc import Callable
 from dataclasses import dataclass
+from tkinter import filedialog
 from typing import TYPE_CHECKING, Any
 
 from morphix_core.ffmpeg_utils import ffprobe_media, find_ffmpeg_binaries
@@ -127,9 +128,8 @@ class TargetTab(BaseTab):
     # ------------------------------------------------------------------
 
     def browse_input(self) -> None:
-        from tkinter import filedialog
-
         path = filedialog.askopenfilename(
+            parent=self._app,
             title="Select video",
             filetypes=[
                 ("Video files", "*.mp4;*.mov;*.mkv;*.avi;*.webm"),
@@ -143,9 +143,8 @@ class TargetTab(BaseTab):
             self._app.after(0, lambda p=path: self._probe_media_duration(p))
 
     def browse_output(self) -> None:
-        from tkinter import filedialog
-
         path = filedialog.asksaveasfilename(
+            parent=self._app,
             title="Select output file",
             defaultextension=".mp4",
             filetypes=[("MP4", "*.mp4"), ("All files", "*.*")],

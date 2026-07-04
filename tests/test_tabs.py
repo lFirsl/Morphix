@@ -317,6 +317,67 @@ class TestTargetTab(unittest.TestCase):
         tab.set_enabled(False)
         tab.set_enabled(True)
 
+    def test_browse_input_passes_parent_kwarg(self):
+        """askopenfilename must receive parent= so the dialog anchors to the window."""
+        tab, _ = self._make_tab()
+        with patch("morphix_ui.tabs.target_tab.filedialog") as mock_fd, \
+             patch("morphix_ui.tabs.target_tab.ffprobe_media", return_value=None):
+            mock_fd.askopenfilename.return_value = "/video.mp4"
+            tab.browse_input()
+        call_kwargs = mock_fd.askopenfilename.call_args.kwargs
+        self.assertIn(
+            "parent",
+            call_kwargs,
+            "parent= must be passed to prevent the dialog appearing behind the window",
+        )
+
+    def test_browse_input_sets_input_var_and_auto_output(self):
+        """Selecting a file via Browse sets input_var and auto-populates output_var."""
+        tab, _ = self._make_tab()
+        with patch("morphix_ui.tabs.target_tab.filedialog") as mock_fd, \
+             patch("morphix_ui.tabs.target_tab.ffprobe_media", return_value=None):
+            mock_fd.askopenfilename.return_value = "/videos/clip.mp4"
+            tab.browse_input()
+        self.assertEqual(tab.input_var.get(), "/videos/clip.mp4")
+        self.assertIn("-morphix-compressed", tab.output_var.get())
+
+    def test_browse_input_cancel_is_noop(self):
+        """Cancelling the file dialog (empty string return) leaves vars unchanged."""
+        tab, _ = self._make_tab()
+        tab.input_var.set("/existing.mp4")
+        tab.output_var.set("/existing-out.mp4")
+        with patch("morphix_ui.tabs.target_tab.filedialog") as mock_fd:
+            mock_fd.askopenfilename.return_value = ""
+            tab.browse_input()
+        self.assertEqual(tab.input_var.get(), "/existing.mp4")
+        self.assertEqual(tab.output_var.get(), "/existing-out.mp4")
+
+    def test_browse_output_passes_parent_kwarg(self):
+        """asksaveasfilename must receive parent= so the dialog anchors to the window."""
+        tab, _ = self._make_tab()
+        with patch("morphix_ui.tabs.target_tab.filedialog") as mock_fd:
+            mock_fd.asksaveasfilename.return_value = "/out.mp4"
+            tab.browse_output()
+        call_kwargs = mock_fd.asksaveasfilename.call_args.kwargs
+        self.assertIn("parent", call_kwargs)
+
+    def test_browse_output_sets_output_var(self):
+        """Selecting an output path via Browse sets output_var."""
+        tab, _ = self._make_tab()
+        with patch("morphix_ui.tabs.target_tab.filedialog") as mock_fd:
+            mock_fd.asksaveasfilename.return_value = "/custom/out.mp4"
+            tab.browse_output()
+        self.assertEqual(tab.output_var.get(), "/custom/out.mp4")
+
+    def test_browse_output_cancel_is_noop(self):
+        """Cancelling the save dialog leaves output_var unchanged."""
+        tab, _ = self._make_tab()
+        tab.output_var.set("/existing-out.mp4")
+        with patch("morphix_ui.tabs.target_tab.filedialog") as mock_fd:
+            mock_fd.asksaveasfilename.return_value = ""
+            tab.browse_output()
+        self.assertEqual(tab.output_var.get(), "/existing-out.mp4")
+
 
 # ---------------------------------------------------------------------------
 # Task 3: TrimTab tests

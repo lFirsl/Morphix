@@ -45,3 +45,6 @@ ffmpeg_binaries/*
 
 .hypothesis
 docs/demo.mp4
+
+# Personal steering (not shared)
+.kiro/steering/rules.md

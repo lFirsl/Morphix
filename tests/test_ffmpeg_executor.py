@@ -274,3 +274,53 @@ class TestRun:
                 executor.run(stream, "PASS1", 100.0, tmp_path)
 
         assert (tmp_path / "ffmpeg-error.log").exists()
+
+
+# ---------------------------------------------------------------------------
+# Noconsole safety tests (PyInstaller --noconsole mode)
+# ---------------------------------------------------------------------------
+
+
+class TestNoconsoleMode:
+    """Verify FFmpegExecutor doesn't crash when sys.stdout is None.
+
+    In PyInstaller --noconsole (windowed) builds, sys.stdout is None.
+    All stdout writes must be guarded to prevent AttributeError.
+    """
+
+    def test_finish_progress_bar_safe_when_stdout_is_none(self):
+        """_finish_progress_bar doesn't crash when sys.stdout is None (UI mode)."""
+        executor = make_executor(progress_cb=lambda pct, phase: None)
+        with patch("morphix_core.ffmpeg_executor.sys.stdout", None):
+            # bar=None and stdout=None — should not raise
+            executor._finish_progress_bar(None)
+
+    def test_finish_progress_bar_safe_with_callback_set(self):
+        """_finish_progress_bar is a no-op when progress_cb is set."""
+        executor = make_executor(progress_cb=lambda pct, phase: None)
+        # Should not write to stdout at all
+        executor._finish_progress_bar(None)
+
+    def test_finish_progress_bar_closes_tqdm_bar(self):
+        """_finish_progress_bar closes a tqdm bar if provided."""
+        executor = make_executor(progress_cb=None)
+        mock_bar = MagicMock()
+        executor._finish_progress_bar(mock_bar)
+        mock_bar.close.assert_called_once()
+
+    def test_render_progress_safe_when_stdout_is_none(self):
+        """_render_progress doesn't crash when sys.stdout is None and no callback."""
+        executor = make_executor(progress_cb=None)
+        with patch("morphix_core.ffmpeg_executor.sys.stdout", None):
+            # Should not raise — bar is None, stdout is None, no callback
+            executor._render_progress(50.0, None, "PASS1", 100.0)
+
+    def test_render_progress_uses_callback_not_stdout(self):
+        """When progress_cb is set, stdout is never touched."""
+        calls = []
+        executor = make_executor(progress_cb=lambda pct, phase: calls.append(pct))
+        with patch("morphix_core.ffmpeg_executor.sys.stdout", None):
+            # Even with stdout=None, this should work via callback
+            executor._render_progress(50.0, None, "PASS1", 100.0)
+        assert len(calls) == 1
+        assert calls[0] == pytest.approx(50.0)

@@ -176,8 +176,9 @@ class FFmpegExecutor:
             self.progress_cb(pct, phase)
             return
         if bar is None:
-            sys.stdout.write(f"\rProgress: {pct:5.1f}%")
-            sys.stdout.flush()
+            if sys.stdout is not None:
+                sys.stdout.write(f"\rProgress: {pct:5.1f}%")
+                sys.stdout.flush()
         else:
             bar.n = int(pct * 10)
             bar.refresh()
@@ -194,12 +195,11 @@ class FFmpegExecutor:
             return None
         return tqdm(total=1000, unit="permille", leave=True, desc=phase)
 
-    @staticmethod
-    def _finish_progress_bar(bar) -> None:
+    def _finish_progress_bar(self, bar) -> None:
         """Close tqdm bar or emit a trailing newline for raw stdout mode."""
         if bar is not None:
             bar.close()
-        else:
+        elif self.progress_cb is None and sys.stdout is not None:
             sys.stdout.write("\n")
 
     # -------------------------------------------------------------------------

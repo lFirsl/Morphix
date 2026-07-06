@@ -368,7 +368,9 @@ class RunContext:
     @staticmethod
     def _finish_progress_bar(bar) -> None:
         """Delegate to executor's progress bar finalization."""
-        FFmpegExecutor._finish_progress_bar(bar)
+        # Note: in UI mode (progress_cb set), this is a no-op.
+        if bar is not None:
+            bar.close()
 
     # -------------------------------------------------------------------------
     # Log management (delegates to TwoPassStrategy, kept for test compat)

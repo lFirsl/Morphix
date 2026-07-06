@@ -20,7 +20,6 @@ from morphix_core.core import (  # noqa: E402
     get_ffmpeg_version,
     resolve_device_info,
 )
-from morphix_core.validation import check_low_compression_ratio  # noqa: E402
 from morphix_ui.widgets import set_widgets_state, show_error  # noqa: E402
 
 
@@ -81,11 +80,14 @@ class MorphixUI(tk.Tk):
         # --- Validation chain ---
         from morphix_ui.validation_chain import (
             FileSizeHandler,
+            LowCompressionHandler,
             TrimValuesHandler,
             build_chain,
         )
 
-        self.validation_chain = build_chain(FileSizeHandler(), TrimValuesHandler())
+        self.validation_chain = build_chain(
+            FileSizeHandler(), TrimValuesHandler(), LowCompressionHandler()
+        )
 
         # --- Post-build initialisation ---
         if input_file:
@@ -233,48 +235,16 @@ class MorphixUI(tk.Tk):
                 show_error(self, msg)
                 return
 
-        # CoR hard validation chain.
+        # CoR validation chain (errors + warnings).
         params["_trim_duration"] = self.state.trim_duration_seconds
-        error = self.validation_chain.handle(params)
-        if error:
-            show_error(self, error)
-            return
-
-        # Soft low-compression-ratio warning (needs askokcancel — stays here).
-        trim_start = trim.start if trim.enabled else None
-        trim_end = trim.end if trim.enabled else None
-
-        if (
-            not trim.enabled
-            or self.state.trim_duration_seconds <= 0
-            or trim_start is None
-            or trim_end is None
-        ):
-            if check_low_compression_ratio(target.size_mb, target.input_path):
+        results = self.validation_chain.handle(params)
+        for result in results:
+            if result.severity == "error":
+                show_error(self, result.message)
+                return
+            if result.severity == "warning":
                 proceed = messagebox.askokcancel(
-                    "Morphix — High Compression Warning",
-                    "The target size is less than 5% of the original file size. "
-                    "The output will very likely look poor.\n\n"
-                    "Consider using a larger target for a viewable result.\n\n"
-                    "Do you want to continue anyway?",
-                )
-                if not proceed:
-                    return
-        else:
-            orig_file_mb = os.path.getsize(target.input_path) / 1_000_000
-            trim_ratio = (trim_end - trim_start) / self.state.trim_duration_seconds
-            est_trimmed_mb = orig_file_mb * trim_ratio
-            if target.size_mb < 0.05 * est_trimmed_mb:
-                min_mb = est_trimmed_mb * 0.05
-                proceed = messagebox.askokcancel(
-                    "Morphix — High Compression Warning",
-                    f"Your trimmed clip is estimated to be about"
-                    f" {est_trimmed_mb:.1f} MB.\n\n"
-                    f"The target size ({target.size_mb:.1f} MB) is less than"
-                    f" 5% of the estimated trimmed clip size. The output will"
-                    f" very likely look poor.\n\n"
-                    f"Consider using a target of at least {min_mb:.1f} MB.\n\n"
-                    "Do you want to continue anyway?",
+                    "Morphix — Warning", result.message
                 )
                 if not proceed:
                     return
@@ -301,6 +271,9 @@ class MorphixUI(tk.Tk):
         def _on_finish() -> None:
             self.state.is_running = False
             self._set_controls_enabled(True)
+
+        trim_start = trim.start if trim.enabled else None
+        trim_end = trim.end if trim.enabled else None
 
         callbacks = CompressionCallbacks(
             on_status=self._set_status,

@@ -316,7 +316,7 @@ class TestMorphixUIControlState(unittest.TestCase):
                 "morphix_ui.validation_chain.check_target_exceeds_file_size"
             ),
             patch(
-                "morphix_ui.main_window.check_low_compression_ratio",
+                "morphix_ui.validation_chain.os.path.isfile",
                 return_value=False,
             ),
         ):
@@ -350,7 +350,7 @@ class TestMorphixUIControlState(unittest.TestCase):
                 "morphix_ui.validation_chain.check_target_exceeds_file_size"
             ),
             patch(
-                "morphix_ui.main_window.check_low_compression_ratio",
+                "morphix_ui.validation_chain.os.path.isfile",
                 return_value=False,
             ),
         ):

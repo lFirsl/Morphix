@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
-import subprocess
-import sys
 from pathlib import Path
 
 import ffmpeg
@@ -22,11 +19,11 @@ from morphix_core.encoder_selection import (
     SAFETY_MARGIN,
     select_encoder,
 )
+from morphix_core.ffmpeg_executor import FFmpegExecutor
 from morphix_core.ffmpeg_utils import (
     detect_available_encoders,
     ffprobe_media,
     find_ffmpeg_binaries,
-    popen_no_window_kwargs,
 )
 from morphix_core.gpu_detection import detect_cuda, resolve_device_info
 
@@ -65,6 +62,15 @@ class RunContext:
         self.encoder_name = ""
         self.encoder_strategy = ""
         self.encoder_warning = ""
+
+        # FFmpeg executor — handles all subprocess interaction.
+        self.executor = FFmpegExecutor(
+            ffmpeg_path=self.ffmpeg_path or "",
+            overwrite=config.overwrite,
+            disable_logs=config.disable_logs,
+            progress=config.progress,
+            progress_cb=config.progress_cb,
+        )
 
     # -------------------------------------------------------------------------
     # Public API
@@ -380,26 +386,16 @@ class RunContext:
         self.passlog_path = self.log_dir / "ffmpeg2pass"
 
     # -------------------------------------------------------------------------
-    # FFmpeg execution and progress
+    # FFmpeg execution — delegates to FFmpegExecutor
     # -------------------------------------------------------------------------
 
-    def _render_progress(self, current_seconds: float, bar, phase: str) -> None:
-        """Convert elapsed seconds to a 0-100% progress update."""
-        if self.duration <= 0:
-            return
-        pct = min(max(current_seconds / self.duration, 0.0), 1.0) * 100.0
-        if self.config.progress_cb:
-            self.config.progress_cb(pct, phase)
-            return
-        if bar is None:
-            sys.stdout.write(f"\rProgress: {pct:5.1f}%")
-            sys.stdout.flush()
-        else:
-            bar.n = int(pct * 10)
-            bar.refresh()
-
     def _run_ffmpeg(self, stream, phase: str) -> None:
-        """Execute ffmpeg with optional progress parsing."""
+        """Execute ffmpeg with optional progress parsing.
+
+        Dispatches to _run_ffmpeg_with_progress or _run_ffmpeg_simple based
+        on config.progress. On failure, writes an error log and raises
+        RuntimeError with a user-friendly message.
+        """
         try:
             if self.config.progress:
                 self._run_ffmpeg_with_progress(stream, phase)
@@ -409,141 +405,44 @@ class RunContext:
             self._write_ffmpeg_error(exc)
             raise RuntimeError(self._parse_ffmpeg_error(exc)) from exc
 
-    @staticmethod
-    def _parse_ffmpeg_error(exc) -> str:
-        """Extract a user-friendly message from an ffmpeg error."""
-        stderr = exc.stderr or b""
-        if b"Driver does not support the required nvenc API" in stderr:
-            return (
-                "NVIDIA driver is too old for this ffmpeg build. "
-                "Update your GPU drivers or select a different encoder."
-            )
-        if b"No NVENC capable devices found" in stderr:
-            return "No NVIDIA GPU found. Select a different device or encoder."
-        if b"Cannot load" in stderr and b"nvcuda.dll" in stderr:
-            return "NVIDIA CUDA drivers not found. Update your GPU drivers."
-        # Unknown error — extract first meaningful line.
-        for line in stderr.decode(errors="replace").splitlines():
-            line = line.strip()
-            if line and not line.startswith(
-                (
-                    "frame=",
-                    "fps=",
-                    "stream_",
-                    "bitrate=",
-                    "total_size=",
-                    "out_time",
-                    "dup_frames",
-                    "drop_frames",
-                    "speed=",
-                    "progress=",
-                    "Qavg:",
-                    "Press [q]",
-                )
-            ):
-                if "Error" in line or "error" in line or "failed" in line:
-                    return f"FFmpeg error: {line}"
-        return (
-            "An unknown FFmpeg error has occurred."
-            " Check the error log for details."
-        )
+    # -------------------------------------------------------------------------
+    # Backward-compatible delegate methods (used by existing tests)
+    # -------------------------------------------------------------------------
 
-    def _run_ffmpeg_with_progress(self, stream, phase: str) -> None:
-        """Enable progress reporting and parse out_time_ms from stderr."""
-        bar = self._maybe_create_progress_bar(phase)
-        stream = stream.global_args("-progress", "pipe:2", "-nostats")
-        cmd = ffmpeg.compile(
-            stream,
-            cmd=self.ffmpeg_path,
-            overwrite_output=self.config.overwrite,
-        )
-        stderr_lines: list[bytes] = []
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            **popen_no_window_kwargs(),
-        )
-        for current_seconds, line in self._iter_progress_seconds(process.stderr):
-            if line:
-                stderr_lines.append(line)
-            if current_seconds is not None:
-                self._render_progress(current_seconds, bar, phase)
-        process.wait()
-        self._finish_progress_bar(bar)
-        if process.returncode != 0:
-            raise ffmpeg.Error("ffmpeg", None, b"".join(stderr_lines))
-
-    def _run_ffmpeg_simple(self, stream) -> None:
-        """Run without progress parsing; optionally suppress logs."""
-        cmd = ffmpeg.compile(
-            stream,
-            cmd=self.ffmpeg_path,
-            overwrite_output=self.config.overwrite,
-        )
-        stderr_target = (
-            subprocess.DEVNULL if self.config.disable_logs else subprocess.PIPE
-        )
-        process = subprocess.Popen(
-            cmd,
-            stdout=(
-                subprocess.DEVNULL if self.config.disable_logs else None
-            ),
-            stderr=stderr_target,
-            **popen_no_window_kwargs(),
-        )
-        process.wait()
-        if process.returncode != 0:
-            err_bytes = None
-            if process.stderr is not None:
-                err_bytes = process.stderr.read()
-            raise ffmpeg.Error("ffmpeg", None, err_bytes)
-
-    def _maybe_create_progress_bar(self, phase: str):
-        """Create a tqdm bar only for CLI mode (no progress callback)."""
-        if self.config.progress_cb is not None:
-            return None
-        try:
-            from tqdm import tqdm
-        except ImportError:
-            return None
-        if self.duration <= 0:
-            return None
-        return tqdm(total=1000, unit="permille", leave=True, desc=phase)
+    def _render_progress(self, current_seconds: float, bar, phase: str) -> None:
+        """Delegate to executor's progress rendering."""
+        self.executor._render_progress(current_seconds, bar, phase, self.duration)
 
     def _iter_progress_seconds(self, stderr_stream):
-        """Yield elapsed output time in seconds, along with raw stderr lines."""
-        time_re = re.compile(r"out_time_ms=(\d+)")
-        while True:
-            line = stderr_stream.readline()
-            if not line:
-                break
-            text = line.decode(errors="ignore").strip()
-            match = time_re.search(text)
-            if match:
-                yield float(match.group(1)) / 1_000_000.0, line
-            else:
-                yield None, line
+        """Delegate to executor's progress parser."""
+        return self.executor.iter_progress_seconds(stderr_stream)
 
-    def _finish_progress_bar(self, bar) -> None:
-        """Close the progress bar or emit a trailing newline for stdout mode."""
-        if bar is not None:
-            bar.close()
-        elif self.config.progress_cb is None:
-            sys.stdout.write("\n")
+    def _run_ffmpeg_with_progress(self, stream, phase: str) -> None:
+        """Delegate to executor's progress-enabled run."""
+        self.executor._run_with_progress(stream, phase, self.duration)
+
+    def _run_ffmpeg_simple(self, stream) -> None:
+        """Delegate to executor's simple run."""
+        self.executor._run_simple(stream)
+
+    @staticmethod
+    def _parse_ffmpeg_error(exc) -> str:
+        """Delegate to executor's error parser."""
+        return FFmpegExecutor.parse_error(exc)
 
     def _write_ffmpeg_error(self, exc) -> None:
-        """Persist ffmpeg stderr to a log file for troubleshooting."""
+        """Delegate to executor's error log writer."""
         if not self.log_dir:
             self.log_dir = self.input_dir / ".output"
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-        err_path = self.log_dir / "ffmpeg-error.log"
-        with open(err_path, "wb") as f:
-            if exc.stderr:
-                f.write(exc.stderr)
-            else:
-                f.write(b"No stderr captured from ffmpeg.\n")
-        logger.error("FFmpeg failed. See: %s", err_path)
+        FFmpegExecutor._write_error_log(exc, self.log_dir)
+
+    def _maybe_create_progress_bar(self, phase: str):
+        """Delegate to executor's progress bar creation."""
+        return self.executor._maybe_create_progress_bar(phase, self.duration)
+
+    def _finish_progress_bar(self, bar) -> None:
+        """Delegate to executor's progress bar finalization."""
+        FFmpegExecutor._finish_progress_bar(bar)
 
     def _cleanup_logs(self) -> None:
         """Remove two-pass log files and delete the log directory if empty."""

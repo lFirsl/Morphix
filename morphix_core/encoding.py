@@ -1,4 +1,15 @@
-"""Encoding engine — RunContext executes a single compression run."""
+"""Encoding engine — RunContext orchestrates a single compression run.
+
+Pipeline steps (executed in order by ``execute()``):
+1. Ensure ffmpeg/ffprobe binaries are available
+2. Resolve the output file path
+3. Probe media for duration/streams
+4. Configure hardware acceleration
+5. Select encoder and strategy
+6. Apply trim input kwargs (if trimming)
+7. Compute resolution scaling
+8. Pick and execute the encoding strategy
+"""
 
 from __future__ import annotations
 
@@ -28,16 +39,18 @@ from morphix_core.gpu_detection import detect_cuda, resolve_device_info
 from morphix_core.strategies import (
     STRATEGY_REGISTRY,
     CRFStrategy,
+    TwoPassStrategy,
 )
 
 logger = logging.getLogger("morphix")
 
 
 class RunContext:
-    """Executes a single compression run based on a CompressConfig.
+    """Orchestrates a single compression run based on a CompressConfig.
 
     All user-facing parameters come from the frozen CompressConfig.
-    This class holds only mutable runtime state that evolves during execution.
+    This class holds mutable runtime state and coordinates the pipeline:
+    ffmpeg discovery → probe → encoder selection → strategy execution.
     """
 
     def __init__(self, config: CompressConfig):
@@ -80,7 +93,18 @@ class RunContext:
     # -------------------------------------------------------------------------
 
     def execute(self) -> str:
-        """Run the full compression pipeline. Returns the output file path."""
+        """Run the full compression pipeline. Returns the output file path.
+
+        Steps:
+        1. Ensure ffmpeg available
+        2. Resolve output path
+        3. Probe media
+        4. Configure hwaccel
+        5. Select encoder
+        6. Apply trim kwargs
+        7. Compute scaling
+        8. Pick strategy → execute
+        """
         logger.info("Morphix Prototype")
         self._ensure_ffmpeg_available()
         self._resolve_output_path()
@@ -93,7 +117,6 @@ class RunContext:
         self._configure_hwaccel()
         self._select_encoder()
 
-        # Merge trim -ss/-t into input_kwargs when trimming is active.
         if self.config.trimming:
             self.input_kwargs = {
                 **self.input_kwargs,
@@ -103,22 +126,17 @@ class RunContext:
 
         self._compute_scaling()
 
-        # Select and execute the encoding strategy.
         strategy = self._pick_strategy()
         return strategy.execute(self)
 
     # -------------------------------------------------------------------------
-    # Stream-building helpers (eliminate repeated input/scale/audio pattern)
+    # Stream-building helpers (used by strategies)
     # -------------------------------------------------------------------------
 
     def _build_output_stream(
         self, output_path: str, **video_kwargs
     ) -> ffmpeg.Stream:
-        """Build an ffmpeg output stream with optional scale and audio.
-
-        Handles the common pattern: input → video → scale → output (with or
-        without audio). Used by all encode methods except Pass 1.
-        """
+        """Build an ffmpeg output stream with optional scale and audio."""
         inp = ffmpeg.input(str(self.config.input_path), **self.input_kwargs)
         video = inp.video
         if self.scale:
@@ -148,10 +166,9 @@ class RunContext:
     # -------------------------------------------------------------------------
 
     def _pick_strategy(self):
-        """Select the appropriate encoding strategy.
+        """Select the encoding strategy.
 
-        Returns an EncodingStrategy instance based on:
-        - CRF if trim segment fits within target (quality-preserving shortcut)
+        - CRF if trimmed segment fits within target (quality-preserving)
         - Otherwise dispatch by encoder_strategy name via STRATEGY_REGISTRY
         """
         if CRFStrategy.should_use(self):
@@ -167,49 +184,13 @@ class RunContext:
         strategy_cls = STRATEGY_REGISTRY[self.encoder_strategy]
         return strategy_cls()
 
-    # -------------------------------------------------------------------------
-    # Encoding helpers (kept for backward compatibility with existing tests)
-    # -------------------------------------------------------------------------
-
     def _estimated_segment_mb(self) -> float:
         """Estimate the size of the trim segment based on the source bitrate."""
         total_bitrate = int(self.probe["format"].get("bit_rate", 0))
         return (total_bitrate * self.config.trim_duration) / 8 / 1_000_000
 
-    def _run_crf_encode(self) -> str:
-        """Backward-compat: delegate to CRFStrategy."""
-        return CRFStrategy().execute(self)
-
-    def _encode_two_pass(self) -> str:
-        """Backward-compat: delegate to TwoPassStrategy."""
-        from morphix_core.strategies import TwoPassStrategy
-
-        return TwoPassStrategy().execute(self)
-
-    def _encode_nvenc_multipass(self) -> str:
-        """Backward-compat: delegate to NvencMultipassStrategy."""
-        from morphix_core.strategies import NvencMultipassStrategy
-
-        return NvencMultipassStrategy().execute(self)
-
-    def _encode_single_pass_cbr(self) -> str:
-        """Backward-compat: delegate to SinglePassCBRStrategy."""
-        from morphix_core.strategies import SinglePassCBRStrategy
-
-        return SinglePassCBRStrategy().execute(self)
-
-    def _run_single_pass(self, kbps: int) -> str:
-        """Backward-compat: execute a single-pass encode at the given bitrate."""
-        stream = self._build_output_stream(
-            self.output_path,
-            vcodec=self.encoder_name,
-            **{"b:v": f"{kbps}k"},
-        )
-        self._run_ffmpeg(stream, "ENCODE")
-        return self.output_path
-
     # -------------------------------------------------------------------------
-    # Setup / configuration helpers
+    # Pipeline setup steps
     # -------------------------------------------------------------------------
 
     def _resolve_output_path(self) -> None:
@@ -238,7 +219,6 @@ class RunContext:
             str(self.config.input_path), self.ffprobe_path
         )
         full_duration = float(self.probe["format"]["duration"])
-        # Use trim duration for bitrate calc and progress when trimming.
         self.duration = (
             self.config.trim_duration if self.config.trimming else full_duration
         )
@@ -252,7 +232,7 @@ class RunContext:
         )
 
     def _configure_hwaccel(self) -> None:
-        """Resolve the requested device preference to a label and hwaccel string."""
+        """Resolve device preference to a label and hwaccel string."""
         self.device_label, hwaccel = resolve_device_info(
             self.config.device_preference
         )
@@ -317,12 +297,10 @@ class RunContext:
         )
 
         if self.config.resolution:
-            # Manual override takes precedence.
             parsed = parse_resolution(self.config.resolution)
             if parsed:
                 self.scale = parsed
         else:
-            # Auto-scale based on bitrate-derived bpp thresholds.
             bpp_targets = {"low": 0.05, "medium": 0.07, "high": 0.10}
             target_bpp = bpp_targets.get(self.config.quality, 0.07)
             scaled = compute_scaled_resolution(
@@ -337,22 +315,15 @@ class RunContext:
                     self.config.quality,
                 )
 
-    def _prepare_logs(self) -> None:
-        """Create the log directory and pass log path for two-pass encoding."""
-        self.log_dir = self.input_dir / ".output"
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.passlog_path = self.log_dir / "ffmpeg2pass"
-
     # -------------------------------------------------------------------------
-    # FFmpeg execution — delegates to FFmpegExecutor
+    # FFmpeg execution (delegates to FFmpegExecutor)
     # -------------------------------------------------------------------------
 
     def _run_ffmpeg(self, stream, phase: str) -> None:
         """Execute ffmpeg with optional progress parsing.
 
-        Dispatches to _run_ffmpeg_with_progress or _run_ffmpeg_simple based
-        on config.progress. On failure, writes an error log and raises
-        RuntimeError with a user-friendly message.
+        Dispatches to _run_ffmpeg_with_progress or _run_ffmpeg_simple.
+        On failure, writes an error log and raises RuntimeError.
         """
         try:
             if self.config.progress:
@@ -363,9 +334,13 @@ class RunContext:
             self._write_ffmpeg_error(exc)
             raise RuntimeError(self._parse_ffmpeg_error(exc)) from exc
 
-    # -------------------------------------------------------------------------
-    # Backward-compatible delegate methods (used by existing tests)
-    # -------------------------------------------------------------------------
+    def _run_ffmpeg_with_progress(self, stream, phase: str) -> None:
+        """Delegate to executor's progress-enabled run."""
+        self.executor._run_with_progress(stream, phase, self.duration)
+
+    def _run_ffmpeg_simple(self, stream) -> None:
+        """Delegate to executor's simple run."""
+        self.executor._run_simple(stream)
 
     def _render_progress(self, current_seconds: float, bar, phase: str) -> None:
         """Delegate to executor's progress rendering."""
@@ -374,14 +349,6 @@ class RunContext:
     def _iter_progress_seconds(self, stderr_stream):
         """Delegate to executor's progress parser."""
         return self.executor.iter_progress_seconds(stderr_stream)
-
-    def _run_ffmpeg_with_progress(self, stream, phase: str) -> None:
-        """Delegate to executor's progress-enabled run."""
-        self.executor._run_with_progress(stream, phase, self.duration)
-
-    def _run_ffmpeg_simple(self, stream) -> None:
-        """Delegate to executor's simple run."""
-        self.executor._run_simple(stream)
 
     @staticmethod
     def _parse_ffmpeg_error(exc) -> str:
@@ -398,25 +365,19 @@ class RunContext:
         """Delegate to executor's progress bar creation."""
         return self.executor._maybe_create_progress_bar(phase, self.duration)
 
-    def _finish_progress_bar(self, bar) -> None:
+    @staticmethod
+    def _finish_progress_bar(bar) -> None:
         """Delegate to executor's progress bar finalization."""
         FFmpegExecutor._finish_progress_bar(bar)
 
+    # -------------------------------------------------------------------------
+    # Log management (delegates to TwoPassStrategy, kept for test compat)
+    # -------------------------------------------------------------------------
+
+    def _prepare_logs(self) -> None:
+        """Create the log directory and pass log path for two-pass encoding."""
+        TwoPassStrategy._prepare_logs(self)
+
     def _cleanup_logs(self) -> None:
         """Remove two-pass log files and delete the log directory if empty."""
-        if not self.passlog_path or not self.log_dir:
-            return
-        passlog_base = self.passlog_path.name
-        for filepath in list(self.log_dir.glob(f"{passlog_base}*.log")) + list(
-            self.log_dir.glob(f"{passlog_base}*.log.mbtree")
-        ):
-            try:
-                filepath.unlink()
-            except FileNotFoundError:
-                pass
-
-        try:
-            if not any(self.log_dir.iterdir()):
-                self.log_dir.rmdir()
-        except OSError:
-            pass
+        TwoPassStrategy._cleanup_logs(self)

@@ -219,23 +219,28 @@ class MorphixUI(tk.Tk):
     # -------------------------------------------------------------------------
 
     def run_compress(self) -> None:
+        """Collect → Validate → Launch compression.
+
+        1. Collect parameters from all tabs.
+        2. Run per-tab validation, then the CoR chain (errors + warnings).
+        3. Transition state and launch the background worker.
+        """
         if self.state.is_running:
             return
 
-        # Collect from all tabs.
+        # 1. Collect from all tabs.
         params = {tab.label: tab.collect() for tab in self.tabs}
         target = params["Target"]
         trim = params["Trim"]
         advanced = params["Advanced"]
 
-        # Per-tab validation (each tab's own validate()).
+        # 2. Validate — per-tab, then chain.
         for tab in self.tabs:
             msg = tab.validate()
             if msg:
                 show_error(self, msg)
                 return
 
-        # CoR validation chain (errors + warnings).
         params["_trim_duration"] = self.state.trim_duration_seconds
         results = self.validation_chain.handle(params)
         for result in results:
@@ -243,22 +248,32 @@ class MorphixUI(tk.Tk):
                 show_error(self, result.message)
                 return
             if result.severity == "warning":
-                proceed = messagebox.askokcancel(
-                    "Morphix — Warning", result.message
-                )
-                if not proceed:
+                if not messagebox.askokcancel("Morphix — Warning", result.message):
                     return
 
+        # 3. Launch compression.
         self.state.is_running = True
         self._set_controls_enabled(False)
         self._refresh_device_label()
         self._refresh_ffmpeg_label()
         self._set_status("Running compression...")
 
-        from morphix_ui.compression_worker import (
-            CompressionCallbacks,
-            start_compression,
+        from morphix_ui.compression_worker import start_compression
+
+        start_compression(
+            input_path=target.input_path,
+            output_path=target.output_path or None,
+            size_value=target.size_mb,
+            device_preference=advanced.device_preference,
+            encoder_override=advanced.encoder_override,
+            trim_start=trim.start if trim.enabled else None,
+            trim_end=trim.end if trim.enabled else None,
+            callbacks=self._build_callbacks(),
         )
+
+    def _build_callbacks(self):
+        """Construct CompressionCallbacks for the background worker."""
+        from morphix_ui.compression_worker import CompressionCallbacks
 
         def _on_warning(msg: str) -> None:
             if not self.state.openh264_warned:
@@ -272,10 +287,7 @@ class MorphixUI(tk.Tk):
             self.state.is_running = False
             self._set_controls_enabled(True)
 
-        trim_start = trim.start if trim.enabled else None
-        trim_end = trim.end if trim.enabled else None
-
-        callbacks = CompressionCallbacks(
+        return CompressionCallbacks(
             on_status=self._set_status,
             on_done=_on_finish,
             on_error=lambda msg: (show_error(self, msg), _on_finish()),
@@ -286,17 +298,6 @@ class MorphixUI(tk.Tk):
                     text=f"Device: {dev} | Encoder: {enc}"
                 ),
             ),
-        )
-
-        start_compression(
-            input_path=target.input_path,
-            output_path=target.output_path or None,
-            size_value=target.size_mb,
-            device_preference=advanced.device_preference,
-            encoder_override=advanced.encoder_override,
-            trim_start=trim_start,
-            trim_end=trim_end,
-            callbacks=callbacks,
         )
 
     # -------------------------------------------------------------------------

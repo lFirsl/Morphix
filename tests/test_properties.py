@@ -542,7 +542,7 @@ def test_prop13_passlog_path_under_output_subdir(filename):
         ctx = make_ctx(input_path)
         TwoPassStrategy._prepare_logs(ctx)
 
-        expected_log_dir = str(Path(tmpdir) / ".output")
+        expected_log_dir = str(Path(tmpdir).resolve() / ".output")
         assert str(ctx.log_dir) == expected_log_dir
         assert str(ctx.passlog_path).startswith(expected_log_dir)
 

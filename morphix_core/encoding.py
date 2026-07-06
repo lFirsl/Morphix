@@ -16,7 +16,6 @@ from morphix_core.config import CompressConfig, parse_resolution
 from morphix_core.encoder_selection import (
     ENCODER_PRIORITY,
     OPENH264_WARNING,
-    SAFETY_MARGIN,
     select_encoder,
 )
 from morphix_core.ffmpeg_executor import FFmpegExecutor
@@ -26,6 +25,10 @@ from morphix_core.ffmpeg_utils import (
     find_ffmpeg_binaries,
 )
 from morphix_core.gpu_detection import detect_cuda, resolve_device_info
+from morphix_core.strategies import (
+    STRATEGY_REGISTRY,
+    CRFStrategy,
+)
 
 logger = logging.getLogger("morphix")
 
@@ -100,26 +103,9 @@ class RunContext:
 
         self._compute_scaling()
 
-        # If the estimated segment already fits within max_mb, use a single-pass
-        # CRF encode (quality-preserving, no bitrate target).
-        if self.config.trimming and self._estimated_segment_mb() <= self.config.max_mb:
-            if self.encoder_name in ("libx264", "h264_nvenc"):
-                est = self._estimated_segment_mb()
-                logger.info(
-                    "Trimmed segment (~%.1fMB) fits within %sMB"
-                    " — using CRF encode.",
-                    est,
-                    self.config.max_mb,
-                )
-                return self._run_crf_encode()
-
-        # Dispatch to the appropriate encoding strategy.
-        strategies = {
-            "two_pass": self._encode_two_pass,
-            "nvenc_multipass": self._encode_nvenc_multipass,
-            "single_pass_cbr": self._encode_single_pass_cbr,
-        }
-        return strategies[self.encoder_strategy]()
+        # Select and execute the encoding strategy.
+        strategy = self._pick_strategy()
+        return strategy.execute(self)
 
     # -------------------------------------------------------------------------
     # Stream-building helpers (eliminate repeated input/scale/audio pattern)
@@ -158,7 +144,31 @@ class RunContext:
         return ffmpeg.output(video, "NUL", **video_kwargs, an=None, f="mp4")
 
     # -------------------------------------------------------------------------
-    # Encoding strategies
+    # Strategy selection
+    # -------------------------------------------------------------------------
+
+    def _pick_strategy(self):
+        """Select the appropriate encoding strategy.
+
+        Returns an EncodingStrategy instance based on:
+        - CRF if trim segment fits within target (quality-preserving shortcut)
+        - Otherwise dispatch by encoder_strategy name via STRATEGY_REGISTRY
+        """
+        if CRFStrategy.should_use(self):
+            est = self._estimated_segment_mb()
+            logger.info(
+                "Trimmed segment (~%.1fMB) fits within %sMB"
+                " — using CRF encode.",
+                est,
+                self.config.max_mb,
+            )
+            return CRFStrategy()
+
+        strategy_cls = STRATEGY_REGISTRY[self.encoder_strategy]
+        return strategy_cls()
+
+    # -------------------------------------------------------------------------
+    # Encoding helpers (kept for backward compatibility with existing tests)
     # -------------------------------------------------------------------------
 
     def _estimated_segment_mb(self) -> float:
@@ -167,81 +177,29 @@ class RunContext:
         return (total_bitrate * self.config.trim_duration) / 8 / 1_000_000
 
     def _run_crf_encode(self) -> str:
-        """Single-pass CRF encode — preserves quality without a bitrate target."""
-        if self.encoder_name == "h264_nvenc":
-            vcodec_kwargs = {"vcodec": "h264_nvenc", "rc": "constqp", "qp": 18}
-        else:
-            vcodec_kwargs = {"vcodec": "libx264", "preset": "medium", "crf": 18}
-        stream = self._build_output_stream(self.output_path, **vcodec_kwargs)
-        self._run_ffmpeg(stream, "CRF")
-        return self.output_path
+        """Backward-compat: delegate to CRFStrategy."""
+        return CRFStrategy().execute(self)
 
     def _encode_two_pass(self) -> str:
-        """Two-pass libx264 encode."""
-        self._prepare_logs()
+        """Backward-compat: delegate to TwoPassStrategy."""
+        from morphix_core.strategies import TwoPassStrategy
 
-        # Pass 1: analysis (video only).
-        self._run_ffmpeg(
-            self._build_analysis_stream(
-                vcodec=self.encoder_name,
-                preset="medium",
-                **{"b:v": f"{self.video_kbps}k"},
-                **{"pass": 1},
-                **{"passlogfile": str(self.passlog_path)},
-            ),
-            "PASS1",
-        )
-
-        # Pass 2: actual encode.
-        stream = self._build_output_stream(
-            self.output_path,
-            vcodec=self.encoder_name,
-            preset="medium",
-            **{"b:v": f"{self.video_kbps}k"},
-            **{"pass": 2},
-            **{"passlogfile": str(self.passlog_path)},
-        )
-        self._run_ffmpeg(stream, "PASS2")
-
-        self._cleanup_logs()
-        return self.output_path
+        return TwoPassStrategy().execute(self)
 
     def _encode_nvenc_multipass(self) -> str:
-        """NVENC multipass encode — single invocation with internal two-pass."""
-        stream = self._build_output_stream(
-            self.output_path,
-            vcodec="h264_nvenc",
-            preset="p4",
-            multipass="fullres",
-            **{"b:v": f"{self.video_kbps}k"},
-            maxrate=f"{self.video_kbps}k",
-            bufsize=f"{self.video_kbps * 2}k",
-        )
-        self._run_ffmpeg(stream, "NVENC")
-        return self.output_path
+        """Backward-compat: delegate to NvencMultipassStrategy."""
+        from morphix_core.strategies import NvencMultipassStrategy
+
+        return NvencMultipassStrategy().execute(self)
 
     def _encode_single_pass_cbr(self) -> str:
-        """Single-pass CBR encode with safety margin. Retries once if over limit."""
-        safe_kbps = int(self.video_kbps * SAFETY_MARGIN)
-        output = self._run_single_pass(safe_kbps)
+        """Backward-compat: delegate to SinglePassCBRStrategy."""
+        from morphix_core.strategies import SinglePassCBRStrategy
 
-        # Check if output exceeds target; retry with further reduction.
-        output_mb = Path(output).stat().st_size / 1_000_000
-        if output_mb > self.config.max_mb:
-            reduction = self.config.max_mb / output_mb * 0.95
-            retry_kbps = int(safe_kbps * reduction)
-            logger.info(
-                "Output %.1fMB exceeds %sMB — retrying at %sk",
-                output_mb,
-                self.config.max_mb,
-                retry_kbps,
-            )
-            output = self._run_single_pass(retry_kbps)
-
-        return output
+        return SinglePassCBRStrategy().execute(self)
 
     def _run_single_pass(self, kbps: int) -> str:
-        """Execute a single-pass encode at the given bitrate."""
+        """Backward-compat: execute a single-pass encode at the given bitrate."""
         stream = self._build_output_stream(
             self.output_path,
             vcodec=self.encoder_name,

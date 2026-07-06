@@ -1027,11 +1027,12 @@ def make_ctx_for_progress(progress=True, progress_cb=None, duration=100.0):
 
 
 def test_iter_progress_seconds_parses_out_time_ms():
-    """_iter_progress_seconds yields N/1_000_000.0 for out_time_ms=N lines."""
-    ctx = make_ctx_for_progress()
+    """iter_progress_seconds yields N/1_000_000.0 for out_time_ms=N lines."""
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
     raw = b"out_time_ms=5000000\n"
     stream = io.BytesIO(raw)
-    results = list(ctx._iter_progress_seconds(stream))
+    results = list(FFmpegExecutor.iter_progress_seconds(stream))
     assert len(results) == 1
     elapsed, line = results[0]
     assert elapsed == pytest.approx(5.0)
@@ -1039,11 +1040,12 @@ def test_iter_progress_seconds_parses_out_time_ms():
 
 
 def test_iter_progress_seconds_yields_none_for_non_matching_lines():
-    """_iter_progress_seconds yields None for lines without out_time_ms."""
-    ctx = make_ctx_for_progress()
+    """iter_progress_seconds yields None for lines without out_time_ms."""
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
     raw = b"frame=100\n"
     stream = io.BytesIO(raw)
-    results = list(ctx._iter_progress_seconds(stream))
+    results = list(FFmpegExecutor.iter_progress_seconds(stream))
     assert len(results) == 1
     elapsed, line = results[0]
     assert elapsed is None
@@ -1051,11 +1053,12 @@ def test_iter_progress_seconds_yields_none_for_non_matching_lines():
 
 
 def test_iter_progress_seconds_handles_multiple_lines():
-    """_iter_progress_seconds correctly handles a mix of matching and non-matching lines."""
-    ctx = make_ctx_for_progress()
+    """iter_progress_seconds correctly handles a mix of matching and non-matching lines."""
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
     data = b"frame=10\nout_time_ms=2000000\nbitrate=500kbps\nout_time_ms=4000000\n"
     stream = io.BytesIO(data)
-    results = list(ctx._iter_progress_seconds(stream))
+    results = list(FFmpegExecutor.iter_progress_seconds(stream))
     assert len(results) == 4
     assert results[0][0] is None  # frame=10
     assert results[1][0] == pytest.approx(2.0)  # out_time_ms=2000000
@@ -1065,9 +1068,10 @@ def test_iter_progress_seconds_handles_multiple_lines():
 
 def test_iter_progress_seconds_zero_value():
     """out_time_ms=0 yields 0.0 seconds."""
-    ctx = make_ctx_for_progress()
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
     stream = io.BytesIO(b"out_time_ms=0\n")
-    results = list(ctx._iter_progress_seconds(stream))
+    results = list(FFmpegExecutor.iter_progress_seconds(stream))
     assert results[0][0] == pytest.approx(0.0)
 
 
@@ -1080,7 +1084,7 @@ def test_render_progress_computes_correct_percentage():
     ctx = make_ctx_for_progress(
         progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=200.0
     )
-    ctx._render_progress(50.0, None, "PASS1")
+    ctx.executor._render_progress(50.0, None, "PASS1", ctx.duration)
     assert len(calls) == 1
     assert calls[0][0] == pytest.approx(25.0)
 
@@ -1091,7 +1095,7 @@ def test_render_progress_100_percent_at_end():
     ctx = make_ctx_for_progress(
         progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=60.0
     )
-    ctx._render_progress(60.0, None, "PASS2")
+    ctx.executor._render_progress(60.0, None, "PASS2", ctx.duration)
     assert calls[0][0] == pytest.approx(100.0)
 
 
@@ -1101,7 +1105,7 @@ def test_render_progress_clamps_above_100():
     ctx = make_ctx_for_progress(
         progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=60.0
     )
-    ctx._render_progress(70.0, None, "PASS1")
+    ctx.executor._render_progress(70.0, None, "PASS1", ctx.duration)
     assert calls[0][0] == pytest.approx(100.0)
 
 
@@ -1114,7 +1118,7 @@ def test_progress_cb_called_with_pass1_label():
     ctx = make_ctx_for_progress(
         progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=100.0
     )
-    ctx._render_progress(50.0, None, "PASS1")
+    ctx.executor._render_progress(50.0, None, "PASS1", ctx.duration)
     assert calls[0][1] == "PASS1"
 
 
@@ -1124,7 +1128,7 @@ def test_progress_cb_called_with_pass2_label():
     ctx = make_ctx_for_progress(
         progress_cb=lambda pct, phase: calls.append((pct, phase)), duration=100.0
     )
-    ctx._render_progress(50.0, None, "PASS2")
+    ctx.executor._render_progress(50.0, None, "PASS2", ctx.duration)
     assert calls[0][1] == "PASS2"
 
 
@@ -1134,7 +1138,7 @@ def test_progress_cb_called_with_pass2_label():
 def test_stdout_fallback_when_progress_cb_is_none(capsys):
     """When progress_cb is None, progress is written to stdout."""
     ctx = make_ctx_for_progress(progress_cb=None, duration=100.0)
-    ctx._render_progress(50.0, None, "PASS1")
+    ctx.executor._render_progress(50.0, None, "PASS1", ctx.duration)
     captured = capsys.readouterr()
     assert "50.0" in captured.out
 
@@ -1142,7 +1146,7 @@ def test_stdout_fallback_when_progress_cb_is_none(capsys):
 def test_stdout_fallback_not_called_when_progress_cb_set(capsys):
     """When progress_cb is set, stdout is not written to."""
     ctx = make_ctx_for_progress(progress_cb=lambda pct, phase: None, duration=100.0)
-    ctx._render_progress(50.0, None, "PASS1")
+    ctx.executor._render_progress(50.0, None, "PASS1", ctx.duration)
     captured = capsys.readouterr()
     assert captured.out == ""
 
@@ -1195,73 +1199,87 @@ def make_ctx_for_logs(input_path):
 
 def test_prepare_logs_creates_output_subdir(tmp_path):
     """_prepare_logs creates a .output/ subdirectory under the input file's directory."""
+    from morphix_core.strategies import TwoPassStrategy
+
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
-    ctx._prepare_logs()
+    TwoPassStrategy._prepare_logs(ctx)
     assert os.path.isdir(os.path.join(str(tmp_path), ".output"))
 
 
 def test_prepare_logs_passlog_path_under_output(tmp_path):
     """passlog_path is set to a path inside the .output/ subdirectory."""
+    from morphix_core.strategies import TwoPassStrategy
+
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
-    ctx._prepare_logs()
+    TwoPassStrategy._prepare_logs(ctx)
     expected_prefix = str(tmp_path / ".output")
     assert str(ctx.passlog_path).startswith(expected_prefix)
 
 
 def test_cleanup_logs_deletes_log_file(tmp_path):
     """_cleanup_logs removes the .log passlog file after Pass 2."""
+    from morphix_core.strategies import TwoPassStrategy
+
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
-    ctx._prepare_logs()
+    TwoPassStrategy._prepare_logs(ctx)
     log_file = str(ctx.passlog_path) + ".log"
     open(log_file, "w").close()  # create the file
-    ctx._cleanup_logs()
+    TwoPassStrategy._cleanup_logs(ctx)
     assert not os.path.exists(log_file)
 
 
 def test_cleanup_logs_deletes_mbtree_file(tmp_path):
     """_cleanup_logs removes the .log.mbtree passlog file after Pass 2."""
+    from morphix_core.strategies import TwoPassStrategy
+
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
-    ctx._prepare_logs()
+    TwoPassStrategy._prepare_logs(ctx)
     mbtree_file = str(ctx.passlog_path) + ".log.mbtree"
     open(mbtree_file, "w").close()  # create the file
-    ctx._cleanup_logs()
+    TwoPassStrategy._cleanup_logs(ctx)
     assert not os.path.exists(mbtree_file)
 
 
 def test_cleanup_logs_removes_output_dir_when_empty(tmp_path):
     """_cleanup_logs removes the .output/ directory when it is empty after cleanup."""
+    from morphix_core.strategies import TwoPassStrategy
+
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
-    ctx._prepare_logs()
+    TwoPassStrategy._prepare_logs(ctx)
     # Create and then remove both passlog files so the dir is empty
     for suffix in (".log", ".log.mbtree"):
         open(str(ctx.passlog_path) + suffix, "w").close()
-    ctx._cleanup_logs()
+    TwoPassStrategy._cleanup_logs(ctx)
     assert not os.path.exists(str(tmp_path / ".output"))
 
 
 def test_cleanup_logs_silently_skips_missing_passlog_files(tmp_path):
     """_cleanup_logs does not raise an exception when passlog files are absent."""
+    from morphix_core.strategies import TwoPassStrategy
+
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
-    ctx._prepare_logs()
+    TwoPassStrategy._prepare_logs(ctx)
     # Do NOT create any passlog files — cleanup should not raise
-    ctx._cleanup_logs()  # must not raise
+    TwoPassStrategy._cleanup_logs(ctx)  # must not raise
 
 
 def test_cleanup_logs_does_not_remove_output_dir_when_not_empty(tmp_path):
     """_cleanup_logs leaves .output/ in place when it still contains other files."""
+    from morphix_core.strategies import TwoPassStrategy
+
     input_file = str(tmp_path / "video.mp4")
     ctx = make_ctx_for_logs(input_file)
-    ctx._prepare_logs()
+    TwoPassStrategy._prepare_logs(ctx)
     # Place an unrelated file in .output/ so it is not empty after cleanup
     other_file = ctx.log_dir / "ffmpeg-error.log"
     open(other_file, "w").close()
-    ctx._cleanup_logs()
+    TwoPassStrategy._cleanup_logs(ctx)
     assert ctx.log_dir.is_dir()
 
 
@@ -1297,11 +1315,14 @@ def _make_ffmpeg_error(stderr_bytes):
 
 def test_write_ffmpeg_error_writes_stderr_bytes(tmp_path):
     """stderr bytes from the exception are written to .output/ffmpeg-error.log."""
-    ctx = make_ctx_for_error_log(tmp_path)
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
+    log_dir = tmp_path / ".output"
+    log_dir.mkdir()
     err_bytes = b"ffmpeg: some error occurred\n"
     exc = _make_ffmpeg_error(err_bytes)
-    ctx._write_ffmpeg_error(exc)
-    log_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
+    FFmpegExecutor._write_error_log(exc, log_dir)
+    log_path = os.path.join(str(log_dir), "ffmpeg-error.log")
     assert os.path.isfile(log_path)
     assert open(log_path, "rb").read() == err_bytes
 
@@ -1311,10 +1332,13 @@ def test_write_ffmpeg_error_writes_stderr_bytes(tmp_path):
 
 def test_write_ffmpeg_error_fallback_when_stderr_is_none(tmp_path):
     """Fallback message is written when exc.stderr is None."""
-    ctx = make_ctx_for_error_log(tmp_path)
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
+    log_dir = tmp_path / ".output"
+    log_dir.mkdir()
     exc = _make_ffmpeg_error(None)
-    ctx._write_ffmpeg_error(exc)
-    log_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
+    FFmpegExecutor._write_error_log(exc, log_dir)
+    log_path = os.path.join(str(log_dir), "ffmpeg-error.log")
     assert open(log_path, "rb").read() == b"No stderr captured from ffmpeg.\n"
 
 
@@ -1323,10 +1347,13 @@ def test_write_ffmpeg_error_fallback_when_stderr_is_none(tmp_path):
 
 def test_write_ffmpeg_error_fallback_when_stderr_is_empty_bytes(tmp_path):
     """Fallback message is written when exc.stderr is empty bytes b''."""
-    ctx = make_ctx_for_error_log(tmp_path)
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
+    log_dir = tmp_path / ".output"
+    log_dir.mkdir()
     exc = _make_ffmpeg_error(b"")
-    ctx._write_ffmpeg_error(exc)
-    log_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
+    FFmpegExecutor._write_error_log(exc, log_dir)
+    log_path = os.path.join(str(log_dir), "ffmpeg-error.log")
     assert open(log_path, "rb").read() == b"No stderr captured from ffmpeg.\n"
 
 
@@ -1337,11 +1364,14 @@ def test_write_ffmpeg_error_prints_log_path_to_stdout(tmp_path, caplog):
     """The path to the error log is logged at ERROR level."""
     import logging
 
-    ctx = make_ctx_for_error_log(tmp_path)
+    from morphix_core.ffmpeg_executor import FFmpegExecutor
+
+    log_dir = tmp_path / ".output"
+    log_dir.mkdir()
     exc = _make_ffmpeg_error(b"some error")
     with caplog.at_level(logging.ERROR, logger="morphix"):
-        ctx._write_ffmpeg_error(exc)
-    expected_path = os.path.join(str(ctx.log_dir), "ffmpeg-error.log")
+        FFmpegExecutor._write_error_log(exc, log_dir)
+    expected_path = os.path.join(str(log_dir), "ffmpeg-error.log")
     assert expected_path in caplog.text
 
 

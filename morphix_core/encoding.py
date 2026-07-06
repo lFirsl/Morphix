@@ -39,7 +39,6 @@ from morphix_core.gpu_detection import detect_cuda, resolve_device_info
 from morphix_core.strategies import (
     STRATEGY_REGISTRY,
     CRFStrategy,
-    TwoPassStrategy,
 )
 
 logger = logging.getLogger("morphix")
@@ -331,8 +330,10 @@ class RunContext:
             else:
                 self._run_ffmpeg_simple(stream)
         except ffmpeg.Error as exc:
-            self._write_ffmpeg_error(exc)
-            raise RuntimeError(self._parse_ffmpeg_error(exc)) from exc
+            if not self.log_dir:
+                self.log_dir = self.input_dir / ".output"
+            FFmpegExecutor._write_error_log(exc, self.log_dir)
+            raise RuntimeError(FFmpegExecutor.parse_error(exc)) from exc
 
     def _run_ffmpeg_with_progress(self, stream, phase: str) -> None:
         """Delegate to executor's progress-enabled run."""
@@ -341,45 +342,3 @@ class RunContext:
     def _run_ffmpeg_simple(self, stream) -> None:
         """Delegate to executor's simple run."""
         self.executor._run_simple(stream)
-
-    def _render_progress(self, current_seconds: float, bar, phase: str) -> None:
-        """Delegate to executor's progress rendering."""
-        self.executor._render_progress(current_seconds, bar, phase, self.duration)
-
-    def _iter_progress_seconds(self, stderr_stream):
-        """Delegate to executor's progress parser."""
-        return self.executor.iter_progress_seconds(stderr_stream)
-
-    @staticmethod
-    def _parse_ffmpeg_error(exc) -> str:
-        """Delegate to executor's error parser."""
-        return FFmpegExecutor.parse_error(exc)
-
-    def _write_ffmpeg_error(self, exc) -> None:
-        """Delegate to executor's error log writer."""
-        if not self.log_dir:
-            self.log_dir = self.input_dir / ".output"
-        FFmpegExecutor._write_error_log(exc, self.log_dir)
-
-    def _maybe_create_progress_bar(self, phase: str):
-        """Delegate to executor's progress bar creation."""
-        return self.executor._maybe_create_progress_bar(phase, self.duration)
-
-    @staticmethod
-    def _finish_progress_bar(bar) -> None:
-        """Delegate to executor's progress bar finalization."""
-        # Note: in UI mode (progress_cb set), this is a no-op.
-        if bar is not None:
-            bar.close()
-
-    # -------------------------------------------------------------------------
-    # Log management (delegates to TwoPassStrategy, kept for test compat)
-    # -------------------------------------------------------------------------
-
-    def _prepare_logs(self) -> None:
-        """Create the log directory and pass log path for two-pass encoding."""
-        TwoPassStrategy._prepare_logs(self)
-
-    def _cleanup_logs(self) -> None:
-        """Remove two-pass log files and delete the log directory if empty."""
-        TwoPassStrategy._cleanup_logs(self)

@@ -20,6 +20,7 @@ from morphix_core.bitrate import (
     compute_scaled_resolution,
     target_kbps_for_size_mb,
 )
+from morphix_core.ffmpeg_executor import FFmpegExecutor
 from morphix_core.ffmpeg_utils import popen_no_window_kwargs
 from morphix_core.gpu_detection import (
     detect_device_info,
@@ -27,6 +28,7 @@ from morphix_core.gpu_detection import (
     resolve_device_info,
 )
 from morphix_core.settings import read_settings, write_settings
+from morphix_core.strategies import TwoPassStrategy
 from morphix_core.validation import (
     check_low_compression_ratio,
     check_target_exceeds_file_size,
@@ -514,15 +516,12 @@ def test_prop12_progress_parsing_direct(out_time_ms):
     """Property 12: out_time_ms=N yields N / 1_000_000.0 seconds.
     **Validates: Requirements 7.1, 7.3**
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = os.path.join(tmpdir, "video.mp4")
-        ctx = make_ctx(input_path)
-        line = f"out_time_ms={out_time_ms}\n".encode()
-        stream = io.BytesIO(line)
-        results = list(ctx._iter_progress_seconds(stream))
-        assert len(results) == 1
-        seconds, raw_line = results[0]
-        assert seconds == out_time_ms / 1_000_000.0
+    line = f"out_time_ms={out_time_ms}\n".encode()
+    stream = io.BytesIO(line)
+    results = list(FFmpegExecutor.iter_progress_seconds(stream))
+    assert len(results) == 1
+    seconds, raw_line = results[0]
+    assert seconds == out_time_ms / 1_000_000.0
 
 
 # ---------------------------------------------------------------------------
@@ -541,7 +540,7 @@ def test_prop13_passlog_path_under_output_subdir(filename):
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = os.path.join(tmpdir, filename)
         ctx = make_ctx(input_path)
-        ctx._prepare_logs()
+        TwoPassStrategy._prepare_logs(ctx)
 
         expected_log_dir = str(Path(tmpdir) / ".output")
         assert str(ctx.log_dir) == expected_log_dir
@@ -575,7 +574,7 @@ def test_prop14_empty_output_dir_removed_after_cleanup(n_passlog_files):
             open(os.path.join(log_dir, f"ffmpeg2pass-{i}.log"), "w").close()
             open(os.path.join(log_dir, f"ffmpeg2pass-{i}.log.mbtree"), "w").close()
 
-        ctx._cleanup_logs()
+        TwoPassStrategy._cleanup_logs(ctx)
         assert not os.path.exists(log_dir)
 
 
@@ -601,7 +600,7 @@ def test_prop15_ffmpeg_error_log_with_stderr(stderr_bytes):
 
         # ffmpeg.Error(cmd, stdout, stderr) — stderr is the third argument
         exc = ffmpeg_lib.Error("ffmpeg", None, stderr_bytes)
-        ctx._write_ffmpeg_error(exc)
+        FFmpegExecutor._write_error_log(exc, Path(log_dir))
 
         err_path = os.path.join(log_dir, "ffmpeg-error.log")
         assert os.path.exists(err_path)
@@ -623,7 +622,7 @@ def test_prop15_ffmpeg_error_log_no_stderr(stderr_bytes):
 
         # ffmpeg.Error(cmd, stdout, stderr) — stderr is the third argument
         exc = ffmpeg_lib.Error("ffmpeg", None, stderr_bytes)
-        ctx._write_ffmpeg_error(exc)
+        FFmpegExecutor._write_error_log(exc, Path(log_dir))
 
         err_path = os.path.join(log_dir, "ffmpeg-error.log")
         assert os.path.exists(err_path)
@@ -661,8 +660,8 @@ def test_prop16_ffmpeg_exception_reraised_after_logging(stderr_bytes):
         # ffmpeg.Error(cmd, stdout, stderr) — stderr is the third argument
         exc = ffmpeg_lib.Error("ffmpeg", None, stderr_bytes)
 
-        # _write_ffmpeg_error itself must not raise
-        ctx._write_ffmpeg_error(exc)
+        # FFmpegExecutor._write_error_log itself must not raise
+        FFmpegExecutor._write_error_log(exc, Path(log_dir))
 
         # _run_ffmpeg must re-raise as RuntimeError with a user-friendly message
         mock_stream = MagicMock()

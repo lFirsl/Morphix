@@ -543,7 +543,7 @@ def test_prop13_passlog_path_under_output_subdir(filename):
         ctx = make_ctx(input_path)
         ctx._prepare_logs()
 
-        expected_log_dir = os.path.join(tmpdir, ".output")
+        expected_log_dir = str(Path(tmpdir) / ".output")
         assert str(ctx.log_dir) == expected_log_dir
         assert str(ctx.passlog_path).startswith(expected_log_dir)
 

@@ -325,7 +325,6 @@ class TestValidationChain(unittest.TestCase):
     def test_warnings_accumulate_and_do_not_short_circuit(self):
         """Warnings don't prevent subsequent handlers from running."""
         from morphix_ui.validation_chain import (
-            LowCompressionHandler,
             ValidationHandler,
             ValidationResult,
             build_chain,

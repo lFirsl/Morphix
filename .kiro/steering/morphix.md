@@ -10,7 +10,9 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 
 - `config.py` — frozen `CompressConfig` dataclass (all user-facing parameters for a run). Also contains `parse_resolution()` utility.
 - `core.py` — **re-export facade** for external interfaces. Thin `run()` function accepts `config=` kwarg (a `CompressConfig`) or individual kwargs for backward compat, instantiates `RunContext`, and calls `.execute()`.
-- `encoding.py` — `RunContext` class. Accepts a `CompressConfig`, holds mutable runtime state, and orchestrates the full compression pipeline. Contains `_build_output_stream()` / `_build_analysis_stream()` helpers to eliminate repeated ffmpeg stream-building. Strategy dispatch via dict lookup.
+- `encoding.py` — `RunContext` class. Thin orchestrator that accepts a `CompressConfig`, holds mutable runtime state, and coordinates the 8-step compression pipeline. Delegates ffmpeg execution to `FFmpegExecutor` and encoding logic to strategy classes. Contains `_build_output_stream()` / `_build_analysis_stream()` stream-building helpers used by strategies.
+- `ffmpeg_executor.py` — `FFmpegExecutor` class. Handles all ffmpeg subprocess interaction: stream compilation, progress-enabled and simple execution modes, `out_time_ms` progress parsing, error message extraction (NVENC/CUDA/generic), and error log persistence.
+- `strategies.py` — Encoding strategy classes (Strategy pattern). `EncodingStrategy` ABC with concrete implementations: `TwoPassStrategy`, `NvencMultipassStrategy`, `SinglePassCBRStrategy`, `CRFStrategy`. `STRATEGY_REGISTRY` dict maps strategy name strings to classes. Adding a new encoder = one new class + one registry entry.
 - `encoder_selection.py` — frozen `EncoderConfig` dataclass, `ENCODER_PRIORITY` list of `EncoderConfig` instances, `select_encoder()`, `OPENH264_WARNING`, `SAFETY_MARGIN`.
 - `ffmpeg_utils.py` — `find_ffmpeg_binaries()`, `ffprobe_media()`, `detect_available_encoders()`, `detect_build_type()`, `get_ffmpeg_version()`, `popen_no_window_kwargs()`.
 - `gpu_detection.py` — vendor registry pattern (`_VENDORS` list). Per-vendor detection functions (`detect_cuda`, `detect_amd`, `detect_intel`). Public API: `detect_device_info()`, `resolve_device_info()`, `get_available_devices()`, `check_nvenc_usable()`.
@@ -27,7 +29,7 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
   - `target_tab.py` — `TargetTab` (input/output/size) + frozen `TargetParams` dataclass.
   - `trim_tab.py` — `TrimTab` (enable/start/end) + frozen `TrimParams` dataclass.
   - `advanced_tab.py` — `AdvancedTab` (device/encoder) + frozen `AdvancedParams` dataclass.
-- `validation_chain.py` — Chain of Responsibility validation pipeline: `ValidationHandler` ABC, `FileSizeHandler`, `TrimValuesHandler`, `build_chain()`.
+- `validation_chain.py` — Chain of Responsibility validation pipeline with severity levels: `ValidationHandler` ABC, `ValidationResult` dataclass (severity: error|warning), `FileSizeHandler`, `TrimValuesHandler`, `LowCompressionHandler`, `build_chain()`. Errors short-circuit; warnings accumulate.
 - `time_utils.py` — shared `parse_time()` and `format_time()` (HH:MM:SS ↔ seconds).
 - `widgets.py` — reusable Tkinter helpers: `set_widgets_state()`, `show_error()`, `show_warning()`, `set_status()`.
 - `dialogs.py` — modal dialogs: `show_settings_dialog()`, `show_about_morphix()`.
@@ -81,7 +83,9 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 
 - Accepts a single `CompressConfig` via `__init__(self, config)`. Holds only mutable runtime state (duration, video_kbps, probe, scale, passlog_path, etc.).
 - `RunContext.execute()` runs the full pipeline and returns the output path.
-- Encode strategies dispatched via dict: `{"two_pass": ..., "nvenc_multipass": ..., "single_pass_cbr": ...}`.
+- Pipeline steps (in order): ensure ffmpeg → resolve output → probe → hwaccel → select encoder → trim kwargs → scaling → pick strategy → execute strategy.
+- Encoding strategies dispatched via `_pick_strategy()`: checks `CRFStrategy.should_use()` first, then looks up `STRATEGY_REGISTRY[encoder_strategy]`.
+- `FFmpegExecutor` instantiated in `__init__`; all subprocess interaction delegated to it.
 - Scale stored as `tuple[int, int] | None` (not a filter string). Passed to `ffmpeg.filter_("scale", w, h)`.
 
 ## Tabbed UI Architecture
@@ -92,18 +96,21 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 - Each tab owns its own `tk.StringVar`/`tk.BooleanVar` instances and widgets.
 - Each tab produces a frozen dataclass via `collect()` and validates its own slice via `validate() -> str | None`.
 - Shared state: all tabs receive `MorphixState` at construction and read/write it as needed.
-- `run_compress()` collects from all tabs, runs per-tab validation, then runs the CoR validation chain. Low-ratio warning (askokcancel) handled inline in main_window since it's a soft check.
+- `run_compress()` collects from all tabs, runs per-tab validation, then runs the CoR validation chain. Errors show `showerror`, warnings show `askokcancel`. Callback wiring is in `_build_callbacks()`.
 - `_set_controls_enabled()` iterates tabs and calls `tab.set_enabled()` — no hardcoded widget list.
 - File probe callback: `TargetTab` receives `on_file_selected: Callable[[float], None]`; main window forwards duration to `TrimTab.set_end_time()`.
 
 ## Validation Chain (CoR)
 
-- `ValidationHandler` ABC — `set_next()`, `handle(params)`, abstract `check(params)`.
-- `FileSizeHandler` — wraps `check_target_exceeds_file_size`. Returns error string or None.
-- `TrimValuesHandler` — wraps `check_trim_values`. Returns error string or None.
+- `ValidationHandler` ABC — `set_next()`, `handle(params) -> list[ValidationResult]`, abstract `check(params) -> ValidationResult | None`.
+- `ValidationResult` — frozen dataclass with `severity: Literal["error", "warning"]` and `message: str`.
+- `FileSizeHandler` — wraps `check_target_exceeds_file_size`. Returns `ValidationResult(severity="error", ...)` or None.
+- `TrimValuesHandler` — wraps `check_trim_values`. Returns `ValidationResult(severity="error", ...)` or None.
+- `LowCompressionHandler` — warns if target < 5% of file/trimmed-segment size. Returns `ValidationResult(severity="warning", ...)` or None.
 - `build_chain(*handlers)` wires handlers into a linked chain, returns the head.
+- **Errors short-circuit** (no further handlers run). **Warnings accumulate** (subsequent handlers still run).
 - `params` dict passed to `handle()` contains: `"Target"` (TargetParams), `"Trim"` (TrimParams), `"Advanced"` (AdvancedParams), `"_trim_duration"` (float).
-- Adding a new validation rule: subclass `ValidationHandler`, implement `check()`, insert into `build_chain()` call in main_window.
+- Adding a new validation rule: subclass `ValidationHandler`, implement `check()`, return `ValidationResult`, insert into `build_chain()` call in main_window.
 
 ## Tkinter / PyInstaller Conventions
 
@@ -115,7 +122,7 @@ Morphix is a Windows desktop video compression app wrapping ffmpeg. It compresse
 ## Testing
 
 - `pytest` + `hypothesis` for property-based tests (min 100 examples per property).
-- 296 tests across 7 files: `test_config.py`, `test_core.py`, `test_properties.py`, `test_cli.py`, `test_ui.py`, `test_tabs.py`, `test_validation_chain.py`, `test_integration.py`, `test_validation.py`.
+- 349 tests across 9 files: `test_config.py`, `test_core.py`, `test_properties.py`, `test_cli.py`, `test_ui.py`, `test_tabs.py`, `test_validation_chain.py`, `test_ffmpeg_executor.py`, `test_strategies.py`, `test_integration.py`, `test_validation.py`.
 - Property tests reference design properties: `# Feature: morphix-video-compressor, Property N: <text>`
 - Integration tests tagged `@pytest.mark.integration` (require ffmpeg on PATH).
 - `pytest.ini` exists at project root for test configuration.

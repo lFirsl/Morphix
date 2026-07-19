@@ -118,19 +118,6 @@ class TestTwoPassStrategy:
         kwargs = ctx._build_output_stream.call_args.kwargs
         assert kwargs["b:v"] == "950k"
 
-    def test_applies_vbv_constraints(self):
-        """Passes maxrate and bufsize to enforce bitrate ceiling."""
-        ctx = _make_context(encoder_name="libx264", video_kbps=1000)
-        with patch("morphix_core.strategies.Path") as mock_path:
-            mock_path.return_value.stat.return_value.st_size = 10_000_000
-            ctx.config.max_mb = 15.0
-            strategy = TwoPassStrategy()
-            strategy.execute(ctx)
-
-        kwargs = ctx._build_output_stream.call_args.kwargs
-        assert kwargs["maxrate"] == "950k"
-        assert kwargs["bufsize"] == "1900k"
-
     def test_retries_when_output_exceeds_target(self):
         """Retries with reduced bitrate when output overshoots."""
         ctx = _make_context(encoder_name="libx264", video_kbps=1000)

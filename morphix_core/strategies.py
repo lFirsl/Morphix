@@ -64,7 +64,6 @@ class TwoPassStrategy(EncodingStrategy):
 
     A 5% safety margin accounts for MP4 container overhead (moov atom,
     muxing headers) which becomes significant at small target sizes.
-    VBV constraints (maxrate/bufsize) enforce a hard bitrate ceiling.
     If the output still overshoots, a single retry with further reduction
     is attempted.
     """
@@ -95,17 +94,12 @@ class TwoPassStrategy(EncodingStrategy):
 
     def _run_two_pass(self, context: RunContext, kbps: int) -> None:
         """Execute a full two-pass encode at the given bitrate."""
-        maxrate = f"{kbps}k"
-        bufsize = f"{kbps * 2}k"
-
         # Pass 1: analysis (video only → NUL).
         context._run_ffmpeg(
             context._build_analysis_stream(
                 vcodec=context.encoder_name,
                 preset="medium",
                 **{"b:v": f"{kbps}k"},
-                maxrate=maxrate,
-                bufsize=bufsize,
                 **{"pass": 1},
                 **{"passlogfile": str(context.passlog_path)},
             ),
@@ -118,8 +112,6 @@ class TwoPassStrategy(EncodingStrategy):
             vcodec=context.encoder_name,
             preset="medium",
             **{"b:v": f"{kbps}k"},
-            maxrate=maxrate,
-            bufsize=bufsize,
             **{"pass": 2},
             **{"passlogfile": str(context.passlog_path)},
         )

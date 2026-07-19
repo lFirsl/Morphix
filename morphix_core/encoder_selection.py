@@ -28,9 +28,6 @@ OPENH264_WARNING = (
     " for instructions on how to get better encoding quality."
 )
 
-SAFETY_MARGIN = 0.85  # For single-pass encoders, target 85% of calculated bitrate.
-
-
 def select_encoder(
     available_encoders: set[str],
     device_preference: str,

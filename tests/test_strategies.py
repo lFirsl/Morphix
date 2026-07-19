@@ -85,8 +85,12 @@ class TestTwoPassStrategy:
     def test_calls_run_ffmpeg_twice(self):
         """Two-pass strategy calls _run_ffmpeg with PASS1 and PASS2."""
         ctx = _make_context()
-        strategy = TwoPassStrategy()
-        strategy.execute(ctx)
+        # Output file "fits" — no retry needed.
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_path.return_value.stat.return_value.st_size = 10_000_000
+            ctx.config.max_mb = 15.0
+            strategy = TwoPassStrategy()
+            strategy.execute(ctx)
 
         assert ctx._run_ffmpeg.call_count == 2
         phases = [c.args[1] for c in ctx._run_ffmpeg.call_args_list]
@@ -94,14 +98,75 @@ class TestTwoPassStrategy:
 
     def test_returns_output_path(self):
         ctx = _make_context(output_path="/out/result.mp4")
-        strategy = TwoPassStrategy()
-        result = strategy.execute(ctx)
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_path.return_value.stat.return_value.st_size = 10_000_000
+            ctx.config.max_mb = 15.0
+            strategy = TwoPassStrategy()
+            result = strategy.execute(ctx)
         assert result == "/out/result.mp4"
+
+    def test_applies_safety_margin(self):
+        """Uses 95% of video_kbps for the target bitrate."""
+        ctx = _make_context(encoder_name="libx264", video_kbps=1000)
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_path.return_value.stat.return_value.st_size = 10_000_000
+            ctx.config.max_mb = 15.0
+            strategy = TwoPassStrategy()
+            strategy.execute(ctx)
+
+        # Pass 2 output stream should use 950k (1000 * 0.95)
+        kwargs = ctx._build_output_stream.call_args.kwargs
+        assert kwargs["b:v"] == "950k"
+
+    def test_applies_vbv_constraints(self):
+        """Passes maxrate and bufsize to enforce bitrate ceiling."""
+        ctx = _make_context(encoder_name="libx264", video_kbps=1000)
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_path.return_value.stat.return_value.st_size = 10_000_000
+            ctx.config.max_mb = 15.0
+            strategy = TwoPassStrategy()
+            strategy.execute(ctx)
+
+        kwargs = ctx._build_output_stream.call_args.kwargs
+        assert kwargs["maxrate"] == "950k"
+        assert kwargs["bufsize"] == "1900k"
+
+    def test_retries_when_output_exceeds_target(self):
+        """Retries with reduced bitrate when output overshoots."""
+        ctx = _make_context(encoder_name="libx264", video_kbps=1000)
+
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_stat = MagicMock()
+            # Output is 20MB, exceeds 15MB target — triggers retry.
+            mock_stat.st_size = 20_000_000
+            mock_path.return_value.stat.return_value = mock_stat
+            ctx.config.max_mb = 15.0
+
+            strategy = TwoPassStrategy()
+            strategy.execute(ctx)
+
+        # Should have called _run_ffmpeg 4 times (2 passes × 2 attempts)
+        assert ctx._run_ffmpeg.call_count == 4
+
+    def test_no_retry_when_output_fits(self):
+        """No retry when output is within target."""
+        ctx = _make_context(encoder_name="libx264", video_kbps=1000)
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_path.return_value.stat.return_value.st_size = 14_000_000
+            ctx.config.max_mb = 15.0
+            strategy = TwoPassStrategy()
+            strategy.execute(ctx)
+
+        # Only 2 calls — one pass each
+        assert ctx._run_ffmpeg.call_count == 2
 
     def test_builds_analysis_stream_for_pass1(self):
         ctx = _make_context(encoder_name="libx264", video_kbps=500)
-        strategy = TwoPassStrategy()
-        strategy.execute(ctx)
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_path.return_value.stat.return_value.st_size = 10_000_000
+            ctx.config.max_mb = 15.0
+            strategy = TwoPassStrategy()
+            strategy.execute(ctx)
 
         ctx._build_analysis_stream.assert_called_once()
         kwargs = ctx._build_analysis_stream.call_args.kwargs
@@ -110,8 +175,11 @@ class TestTwoPassStrategy:
 
     def test_builds_output_stream_for_pass2(self):
         ctx = _make_context(encoder_name="libx264", video_kbps=500)
-        strategy = TwoPassStrategy()
-        strategy.execute(ctx)
+        with patch("morphix_core.strategies.Path") as mock_path:
+            mock_path.return_value.stat.return_value.st_size = 10_000_000
+            ctx.config.max_mb = 15.0
+            strategy = TwoPassStrategy()
+            strategy.execute(ctx)
 
         ctx._build_output_stream.assert_called_once()
         args = ctx._build_output_stream.call_args
@@ -170,6 +238,17 @@ class TestNvencMultipassStrategy:
         assert kwargs["vcodec"] == "h264_nvenc"
         assert kwargs["preset"] == "p4"
         assert kwargs["multipass"] == "fullres"
+
+    def test_applies_full_bitrate(self):
+        """NVENC uses full bitrate (safety_margin = 1.0)."""
+        ctx = _make_context(encoder_name="h264_nvenc", video_kbps=2000)
+        strategy = NvencMultipassStrategy()
+        strategy.execute(ctx)
+
+        kwargs = ctx._build_output_stream.call_args.kwargs
+        assert kwargs["b:v"] == "2000k"
+        assert kwargs["maxrate"] == "2000k"
+        assert kwargs["bufsize"] == "4000k"
 
     def test_returns_output_path(self):
         ctx = _make_context(output_path="/out/nvenc.mp4")

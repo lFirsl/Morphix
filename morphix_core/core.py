@@ -14,7 +14,6 @@ from morphix_core.config import CompressConfig, parse_resolution  # noqa: F401
 from morphix_core.encoder_selection import (  # noqa: F401
     ENCODER_PRIORITY,
     OPENH264_WARNING,
-    SAFETY_MARGIN,  # noqa: F401
     select_encoder,
 )
 from morphix_core.encoding import RunContext  # noqa: F401

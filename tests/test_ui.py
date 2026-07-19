@@ -343,8 +343,22 @@ class TestMorphixUIControlState(unittest.TestCase):
         def fake_run_raises(*args, **kwargs):
             raise RuntimeError("ffmpeg failed")
 
+        captured_thread = []
+        original_start = __import__(
+            "morphix_ui.compression_worker", fromlist=["start_compression"]
+        ).start_compression
+
+        def capturing_start(**kwargs):
+            thread = original_start(**kwargs)
+            captured_thread.append(thread)
+            return thread
+
         with (
             patch("morphix_ui.compression_worker.run", side_effect=fake_run_raises),
+            patch(
+                "morphix_ui.compression_worker.start_compression",
+                side_effect=capturing_start,
+            ),
             patch.object(self.ui_mod, "messagebox"),
             patch(
                 "morphix_ui.validation_chain.check_target_exceeds_file_size"
@@ -356,7 +370,7 @@ class TestMorphixUIControlState(unittest.TestCase):
         ):
             app.run_compress()
 
-        time.sleep(0.15)
+        captured_thread[0].join(timeout=5)
 
         self.assertEqual(app.compress_btn._state, "normal")
         self.assertEqual(app.tabs[0].input_entry._state, "normal")

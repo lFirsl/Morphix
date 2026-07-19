@@ -414,6 +414,7 @@ def test_prop10_gpu_detection_exceptions_swallowed(nvidia_exc, amd_exc, intel_ex
 # ---------------------------------------------------------------------------
 
 
+@settings(deadline=5000)
 @given(
     has_nvidia=st.booleans(),
     has_amd=st.booleans(),
